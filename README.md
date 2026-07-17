@@ -41,7 +41,24 @@ Officer will follow.
 
 See [`docs/ARCHITECTURE_PHASE2.md`](docs/ARCHITECTURE_PHASE2.md) for the full design.
 
-**39 passing tests total, CI on every push.**
+## Phase 3 (current): Chief Commodity Analyst + Chief FX Analyst
+
+Per-market positioning agents, built on a new shared `PositioningAgent` base.
+
+- One agent instance per market (e.g. `ChiefCommodityAnalyst(manager, cot_key="COT_GOLD")`)
+  — each is tied to a specific CFTC COT dataset key
+- `CotConnector` extended to fetch multi-week positioning history (not just
+  the latest snapshot), so agents can score positioning *trend*
+- Flags "crowded" long/short positioning (>40% of open interest) as an
+  elevated-risk signal, independent of the directional bias itself
+- Chief Commodity Analyst and Chief FX Analyst are currently ~2 lines each —
+  all shared logic lives in `PositioningAgent`; they'll diverge once
+  commodity-specific (USDA/EIA/weather) and FX-specific (rate differentials,
+  DXY) data get added in later phases
+
+See [`docs/ARCHITECTURE_PHASE3.md`](docs/ARCHITECTURE_PHASE3.md) for the full design.
+
+**58 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -50,6 +67,7 @@ pip install -r requirements.txt
 cp .env.example .env   # add your free FRED API key
 python scripts/demo_refresh.py
 python scripts/demo_agents.py
+python scripts/demo_commodity_fx_agents.py
 pytest tests/ -v
 ```
 
@@ -60,13 +78,13 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
-connectors/    Data source adapters (FRED, CFTC COT, Yahoo — Phase 1)
-agents/        BaseAgent, Chief Macro Officer, Chief Bond Strategist (Phase 2 — built)
+connectors/    FRED, CFTC COT (multi-week history), Yahoo (Phase 1, extended Phase 3)
+agents/        BaseAgent, PositioningAgent, all 4 Chief Officers (Phase 2 & 3 — built)
 models/        Shared AgentReport model (Phase 2 — built)
 config/        Settings + refresh interval defaults
-tests/         39 passing tests, network-independent (fake connectors/sources)
-scripts/       demo_refresh.py, demo_agents.py — end-to-end proof
-docs/          Architecture (Phase 1 & 2), installation, configuration, roadmap
+tests/         58 passing tests, network-independent (fake connectors/sources, mocked HTTP)
+scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py
+docs/          Architecture (Phases 1-3), installation, configuration, roadmap
 dashboard/     Reserved: Streamlit dashboard (later phase)
 telegram/      Reserved: Chief Execution Officer alerting (later phase)
 database/      Reserved: Chief Learning Officer persistence (later phase)

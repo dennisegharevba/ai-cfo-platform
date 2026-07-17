@@ -12,8 +12,14 @@ starts, per the project's delivery principle.
       pattern. Shared `AgentReport` output model (`models/report.py`). 17 new
       tests (39 total), `scripts/demo_agents.py`. See
       `docs/ARCHITECTURE_PHASE2.md`.
-- [ ] **Phase 3 — Chief Commodity Analyst + Chief FX Analyst**
-      Adds CFTC COT-driven positioning analysis, USDA/EIA/weather connectors.
+- [x] **Phase 3 — Chief Commodity Analyst + Chief FX Analyst** (this delivery)
+      Per-market agents built on a new shared `PositioningAgent` base
+      (`agents/positioning_agent_base.py`), driven by CFTC COT speculative
+      positioning trend + crowded-positioning risk flagging. Extended
+      `CotConnector` to fetch multi-week history instead of a single
+      snapshot. 19 new tests (58 total),
+      `scripts/demo_commodity_fx_agents.py`. See
+      `docs/ARCHITECTURE_PHASE3.md`.
 - [ ] **Phase 4 — Chief Equity Analyst + Chief Cryptocurrency Analyst**
       Adds SEC EDGAR, earnings, and crypto exchange connectors.
 - [ ] **Phase 5 — Chief Sentiment Officer + Chief Technical Officer**
