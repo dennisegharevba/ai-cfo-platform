@@ -6,10 +6,12 @@ starts, per the project's delivery principle.
 - [x] **Phase 1 — Data Integrity & Refresh Manager** (this delivery)
       `core/`, three real connectors (FRED, CFTC COT, Yahoo), 22 passing tests,
       CI workflow, full docs.
-- [ ] **Phase 2 — Chief Macro Officer + Chief Bond Strategist**
-      First two analytical agents, consuming data exclusively through
-      `DataIntegrityManager`. Establishes the "agent" pattern the other ten
-      officers will follow.
+- [x] **Phase 2 — Chief Macro Officer + Chief Bond Strategist** (this delivery)
+      First two analytical agents (`agents/`), consuming data exclusively
+      through `DataIntegrityManager` via the new `BaseAgent` template method
+      pattern. Shared `AgentReport` output model (`models/report.py`). 17 new
+      tests (39 total), `scripts/demo_agents.py`. See
+      `docs/ARCHITECTURE_PHASE2.md`.
 - [ ] **Phase 3 — Chief Commodity Analyst + Chief FX Analyst**
       Adds CFTC COT-driven positioning analysis, USDA/EIA/weather connectors.
 - [ ] **Phase 4 — Chief Equity Analyst + Chief Cryptocurrency Analyst**
