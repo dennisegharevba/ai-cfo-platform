@@ -58,16 +58,30 @@ Per-market positioning agents, built on a new shared `PositioningAgent` base.
 
 See [`docs/ARCHITECTURE_PHASE3.md`](docs/ARCHITECTURE_PHASE3.md) for the full design.
 
-**58 passing tests total, CI on every push.**
+## Phase 4 (current): Chief Equity Analyst + Chief Cryptocurrency Analyst
+
+- Chief Equity Analyst: EPS + revenue trend per ticker, via a new free SEC
+  EDGAR connector (10-Q/10-K filings only, no API key — just a descriptive
+  User-Agent)
+- Chief Cryptocurrency Analyst: funding rate (60%) + open interest trend
+  (40%) per symbol, via a new free Binance futures connector; flags extreme
+  funding rates as a crowded long/short trade
+- Extracted `agents/trend_scoring.py` as a shared module once a third agent
+  needed the same "trend from a fetched window" scoring logic
+
+See [`docs/ARCHITECTURE_PHASE4.md`](docs/ARCHITECTURE_PHASE4.md) for the full design.
+
+**93 passing tests total, CI on every push.**
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add your free FRED API key
+cp .env.example .env   # add your free FRED API key + SEC_USER_AGENT
 python scripts/demo_refresh.py
 python scripts/demo_agents.py
 python scripts/demo_commodity_fx_agents.py
+python scripts/demo_equity_crypto_agents.py
 pytest tests/ -v
 ```
 
@@ -78,13 +92,14 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
-connectors/    FRED, CFTC COT (multi-week history), Yahoo (Phase 1, extended Phase 3)
-agents/        BaseAgent, PositioningAgent, all 4 Chief Officers (Phase 2 & 3 — built)
+connectors/    FRED, CFTC COT, Yahoo, SEC EDGAR, Binance (Phases 1, 3 & 4)
+agents/        BaseAgent + all 6 Chief Officers built so far (Phases 2-4)
 models/        Shared AgentReport model (Phase 2 — built)
 config/        Settings + refresh interval defaults
-tests/         58 passing tests, network-independent (fake connectors/sources, mocked HTTP)
-scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py
-docs/          Architecture (Phases 1-3), installation, configuration, roadmap
+tests/         93 passing tests, network-independent (fake sources, mocked HTTP)
+scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
+               demo_equity_crypto_agents.py
+docs/          Architecture (Phases 1-4), installation, configuration, roadmap
 dashboard/     Reserved: Streamlit dashboard (later phase)
 telegram/      Reserved: Chief Execution Officer alerting (later phase)
 database/      Reserved: Chief Learning Officer persistence (later phase)

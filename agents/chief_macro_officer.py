@@ -19,12 +19,13 @@ without needing to inspect model internals.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from core.dataset import Dataset
 from models.report import AgentReport, Bias, RiskLevel, bias_from_score
 
 from .base_agent import BaseAgent
+from .trend_scoring import series_trend_score as _series_trend_score
 
 # Registration keys this agent expects to find in the DataIntegrityManager
 KEY_CPI = "FRED_CPI"
@@ -33,40 +34,6 @@ KEY_UNRATE = "FRED_UNRATE"
 # Component weights (must sum to 100)
 WEIGHT_INFLATION = 50
 WEIGHT_LABOR = 50
-
-
-def _series_trend_score(history: List[dict], lower_is_bullish: bool) -> Optional[float]:
-    """
-    Compare the latest observation to the earliest available one in the
-    supplied history window and produce a -100..+100 trend score.
-
-    lower_is_bullish=True means a falling series (e.g. unemployment,
-    decelerating inflation) is the bullish direction for this component.
-
-    Returns None if there isn't enough history to compute a trend.
-    """
-    values = []
-    for obs in history:
-        raw = obs.get("value")
-        try:
-            values.append(float(raw))
-        except (TypeError, ValueError):
-            continue
-
-    if len(values) < 2:
-        return None
-
-    latest = values[0]   # FRED connector returns observations sorted desc (newest first)
-    earliest = values[-1]
-
-    if earliest == 0:
-        return None
-
-    pct_change = (latest - earliest) / abs(earliest) * 100
-    # Normalize: a swing of +/-5% over the window is treated as a strong move.
-    normalized = max(-100.0, min(100.0, (pct_change / 5.0) * 100))
-
-    return -normalized if lower_is_bullish else normalized
 
 
 class ChiefMacroOfficer(BaseAgent):

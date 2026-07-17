@@ -20,8 +20,13 @@ starts, per the project's delivery principle.
       snapshot. 19 new tests (58 total),
       `scripts/demo_commodity_fx_agents.py`. See
       `docs/ARCHITECTURE_PHASE3.md`.
-- [ ] **Phase 4 — Chief Equity Analyst + Chief Cryptocurrency Analyst**
-      Adds SEC EDGAR, earnings, and crypto exchange connectors.
+- [x] **Phase 4 — Chief Equity Analyst + Chief Cryptocurrency Analyst** (this delivery)
+      New `SecEdgarConnector` (free XBRL fundamentals) and
+      `BinanceFuturesConnector` (free futures OI + funding rate). Extracted
+      shared `agents/trend_scoring.py` (third-consumer trigger). New
+      `agents/crypto_scoring.py` for funding-rate-based sentiment/crowding.
+      35 new tests (93 total), `scripts/demo_equity_crypto_agents.py`. See
+      `docs/ARCHITECTURE_PHASE4.md`.
 - [ ] **Phase 5 — Chief Sentiment Officer + Chief Technical Officer**
       News/positioning sentiment, plus technical confirmation layer.
 - [ ] **Phase 6 — Chief Risk Officer**
