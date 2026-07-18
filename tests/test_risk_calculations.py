@@ -20,7 +20,10 @@ def test_daily_returns_skips_zero_previous_price():
 def test_annualized_volatility_zero_for_constant_returns():
     returns = [0.01] * 30
     vol = annualized_volatility(returns)
-    assert vol == 0.0
+    # Floating-point variance math on constant input can leave tiny residue
+    # (e.g. ~1e-15) depending on Python build/platform, even though the true
+    # mathematical answer is exactly zero — use a tolerance, not ==.
+    assert abs(vol) < 1e-9
 
 
 def test_annualized_volatility_positive_for_varying_returns():
@@ -49,12 +52,12 @@ def test_historical_var_positive_for_realistic_returns():
 def test_historical_var_near_zero_for_flat_returns():
     returns = [0.0] * 50
     var95 = historical_var(returns, confidence=0.95)
-    assert var95 == 0.0
+    assert abs(var95) < 1e-9
 
 
 def test_max_drawdown_no_decline_is_zero():
     closes = [100, 101, 102, 103, 104]
-    assert max_drawdown(closes) == 0.0
+    assert abs(max_drawdown(closes)) < 1e-9
 
 
 def test_max_drawdown_captures_peak_to_trough():
