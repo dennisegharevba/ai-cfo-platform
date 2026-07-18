@@ -37,8 +37,16 @@ starts, per the project's delivery principle.
       positioning-scoring functions. 39 new tests (132 total),
       `scripts/demo_sentiment_technical_agents.py`. See
       `docs/ARCHITECTURE_PHASE5.md`.
-- [ ] **Phase 6 — Chief Risk Officer**
-      Portfolio-level risk metrics (VaR, correlation, drawdown).
+- [x] **Phase 6 — Chief Risk Officer** (this delivery)
+      A genuine architectural branch point: new `PortfolioAgent` base class
+      (`agents/portfolio_agent_base.py`) for agents that analyze a whole
+      Portfolio of positions rather than one asset/theme, plus new
+      `Portfolio`/`Position` models. New pure-Python
+      `agents/risk_calculations.py` (volatility, historical VaR, max
+      drawdown, correlation). No new connector — reuses Phase 5's
+      `YahooHistoryConnector` across multiple symbols. 25 new tests
+      (157 total), `scripts/demo_risk_officer.py`. See
+      `docs/ARCHITECTURE_PHASE6.md`.
 - [ ] **Phase 7 — Chief Strategy Officer**
       The synthesis layer: collects every department's report, resolves
       conflicts, produces the final institutional outlook.

@@ -85,7 +85,25 @@ See [`docs/ARCHITECTURE_PHASE4.md`](docs/ARCHITECTURE_PHASE4.md) for the full de
 
 See [`docs/ARCHITECTURE_PHASE5.md`](docs/ARCHITECTURE_PHASE5.md) for the full design.
 
-**132 passing tests total, CI on every push.**
+## Phase 6 (current): Chief Risk Officer
+
+The first genuinely different agent shape — analyzes a whole **portfolio**
+of positions rather than one asset/theme.
+
+- New `PortfolioAgent` base class (parallel to `BaseAgent`, same
+  data-integrity contract, keyed by symbol instead of a fixed dataset list)
+- New `Portfolio`/`Position` models
+- Concentration, portfolio volatility, historical VaR (95%), max drawdown,
+  and average pairwise correlation — all pure-Python, no numpy
+- Deliberately non-directional: `bias`/`bias_score` stay neutral/0 for this
+  agent; the actual assessment lives in `risk_level` and the evidence/risks
+  lists (the Risk desk says how risky, not which way)
+- No new connector — reuses Phase 5's Yahoo Finance history connector
+  across every position in the portfolio
+
+See [`docs/ARCHITECTURE_PHASE6.md`](docs/ARCHITECTURE_PHASE6.md) for the full design.
+
+**157 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -97,6 +115,7 @@ python scripts/demo_agents.py
 python scripts/demo_commodity_fx_agents.py
 python scripts/demo_equity_crypto_agents.py
 python scripts/demo_sentiment_technical_agents.py
+python scripts/demo_risk_officer.py
 pytest tests/ -v
 ```
 
@@ -108,13 +127,14 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
 connectors/    FRED, CFTC COT, Yahoo (quote + history), SEC EDGAR, Binance, News RSS
-agents/        BaseAgent + all 8 Chief Officers built so far (Phases 2-5)
-models/        Shared AgentReport model (Phase 2 — built)
+agents/        BaseAgent + PortfolioAgent + all 9 Chief Officers (Phases 2-6)
+models/        AgentReport, Portfolio, Position (Phases 2 & 6 — built)
 config/        Settings + refresh interval defaults
-tests/         132 passing tests, network-independent (fake sources, mocked HTTP)
+tests/         157 passing tests, network-independent (fake sources, mocked HTTP)
 scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
-               demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py
-docs/          Architecture (Phases 1-5), installation, configuration, roadmap
+               demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py,
+               demo_risk_officer.py
+docs/          Architecture (Phases 1-6), installation, configuration, roadmap
 dashboard/     Reserved: Streamlit dashboard (later phase)
 telegram/      Reserved: Chief Execution Officer alerting (later phase)
 database/      Reserved: Chief Learning Officer persistence (later phase)
