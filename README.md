@@ -71,7 +71,21 @@ See [`docs/ARCHITECTURE_PHASE3.md`](docs/ARCHITECTURE_PHASE3.md) for the full de
 
 See [`docs/ARCHITECTURE_PHASE4.md`](docs/ARCHITECTURE_PHASE4.md) for the full design.
 
-**93 passing tests total, CI on every push.**
+## Phase 5 (current): Chief Sentiment Officer + Chief Technical Officer
+
+- Chief Technical Officer: RSI (20%) + MACD histogram (40%) + SMA(20/50)
+  trend (40%) per ticker, via a new free Yahoo Finance history connector;
+  flags overbought/oversold RSI as elevated risk
+- Chief Sentiment Officer: free news-RSS headline sentiment (keyword-based,
+  fully explainable — no ML black box), optionally blended with the same
+  CFTC COT dataset a Chief Commodity/FX Analyst already reads, reinterpreted
+  as a crowd-sentiment signal
+- New pure-Python `agents/technical_indicators.py` (RSI/MACD/SMA — no
+  numpy/pandas indicator libraries, every formula inspectable)
+
+See [`docs/ARCHITECTURE_PHASE5.md`](docs/ARCHITECTURE_PHASE5.md) for the full design.
+
+**132 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -82,6 +96,7 @@ python scripts/demo_refresh.py
 python scripts/demo_agents.py
 python scripts/demo_commodity_fx_agents.py
 python scripts/demo_equity_crypto_agents.py
+python scripts/demo_sentiment_technical_agents.py
 pytest tests/ -v
 ```
 
@@ -92,14 +107,14 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
-connectors/    FRED, CFTC COT, Yahoo, SEC EDGAR, Binance (Phases 1, 3 & 4)
-agents/        BaseAgent + all 6 Chief Officers built so far (Phases 2-4)
+connectors/    FRED, CFTC COT, Yahoo (quote + history), SEC EDGAR, Binance, News RSS
+agents/        BaseAgent + all 8 Chief Officers built so far (Phases 2-5)
 models/        Shared AgentReport model (Phase 2 — built)
 config/        Settings + refresh interval defaults
-tests/         93 passing tests, network-independent (fake sources, mocked HTTP)
+tests/         132 passing tests, network-independent (fake sources, mocked HTTP)
 scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
-               demo_equity_crypto_agents.py
-docs/          Architecture (Phases 1-4), installation, configuration, roadmap
+               demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py
+docs/          Architecture (Phases 1-5), installation, configuration, roadmap
 dashboard/     Reserved: Streamlit dashboard (later phase)
 telegram/      Reserved: Chief Execution Officer alerting (later phase)
 database/      Reserved: Chief Learning Officer persistence (later phase)

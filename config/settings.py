@@ -23,6 +23,10 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 # see connectors/sec_edgar_connector.py
 SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "")
 
+# Public market-news RSS feed used by the Chief Sentiment Officer.
+# Default: MarketWatch's public top-stories feed (free, no key).
+NEWS_RSS_URL = os.getenv("NEWS_RSS_URL") or "http://feeds.marketwatch.com/marketwatch/topstories/"
+
 # Minimum quality score (0-100) a dataset must have to be considered usable
 # by any agent. Configurable per the spec's "block on unavailable/low quality" rule.
 MIN_DATA_QUALITY = float(os.getenv("MIN_DATA_QUALITY", "60"))

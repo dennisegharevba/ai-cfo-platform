@@ -8,6 +8,7 @@ full list.
 |----------------------|:---:|------------------------------------------------------------|
 | `FRED_API_KEY`       | Optional | Needed for `FredConnector` to return real data. Free key. |
 | `SEC_USER_AGENT`     | Optional (needed for Phase 4 equity data) | SEC requires a descriptive User-Agent with real contact info, e.g. `"AI CFO Platform you@example.com"` — requests without one are commonly rejected. |
+| `NEWS_RSS_URL`       | Optional (Phase 5 sentiment data) | Public market-news RSS feed. Defaults to MarketWatch's public top-stories feed if left blank. |
 | `TELEGRAM_BOT_TOKEN` | No (future phase) | Chief Execution Officer alerting |
 | `TELEGRAM_CHAT_ID`   | No (future phase) | Chief Execution Officer alerting |
 | `ANTHROPIC_API_KEY`  | No (future phase) | AI-generated agent summaries |

@@ -27,8 +27,16 @@ starts, per the project's delivery principle.
       `agents/crypto_scoring.py` for funding-rate-based sentiment/crowding.
       35 new tests (93 total), `scripts/demo_equity_crypto_agents.py`. See
       `docs/ARCHITECTURE_PHASE4.md`.
-- [ ] **Phase 5 — Chief Sentiment Officer + Chief Technical Officer**
-      News/positioning sentiment, plus technical confirmation layer.
+- [x] **Phase 5 — Chief Sentiment Officer + Chief Technical Officer** (this delivery)
+      New `NewsRssConnector` (free RSS, stdlib XML parsing) and
+      `YahooHistoryConnector` (free daily-close history). New
+      `agents/technical_indicators.py` (pure-Python RSI/MACD/SMA) and
+      `agents/sentiment_scoring.py` (keyword-based headline sentiment).
+      Chief Sentiment Officer optionally blends in the same COT dataset a
+      Chief Commodity/FX Analyst already reads, reusing Phase 3's
+      positioning-scoring functions. 39 new tests (132 total),
+      `scripts/demo_sentiment_technical_agents.py`. See
+      `docs/ARCHITECTURE_PHASE5.md`.
 - [ ] **Phase 6 — Chief Risk Officer**
       Portfolio-level risk metrics (VaR, correlation, drawdown).
 - [ ] **Phase 7 — Chief Strategy Officer**
