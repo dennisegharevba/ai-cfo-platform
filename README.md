@@ -8,8 +8,10 @@ commodities, equities, indices, ETFs, futures, forex, bonds, and crypto.
 research, probability-based directional bias, and gated alerts (Telegram +
 dashboard) for a human to act on.
 
-Built in fully working, tested, documented phases. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's done and what's next.
+Built in fully working, tested, documented phases. All 12 Chief Officers
+from the original spec are now built (Phases 1-9); see
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's left (dashboard +
+scheduled automation).
 
 ## Phase 1: Data Integrity & Refresh Manager
 
@@ -147,13 +149,32 @@ method at all.
 
 See [`docs/ARCHITECTURE_PHASE8.md`](docs/ARCHITECTURE_PHASE8.md) for the full design.
 
-**190 passing tests total, CI on every push.**
+## Phase 9 (current): Chief Execution Officer — all 12 Chief Officers now built
+
+The final officer, and a gate rather than an analyst.
+
+- Reads a `StrategyReport` (Phase 7) and only alerts when confidence, bias
+  strength, risk level, and data coverage ALL clear configurable thresholds
+  — every blocking reason is independently checked and reported, not just
+  the first one found
+- New free `TelegramAlerter` (`telegram/telegram_alerter.py`) — no cost
+  beyond creating a bot via @BotFather
+- A failed send is recorded on the decision (`send_error`), never silently
+  swallowed — consistent with the "never fail silently" principle used
+  throughout the data-integrity layer since Phase 1
+- `evaluate()` is pure (no side effects) and separable from `process()`
+  (which actually sends) — useful for a future dashboard to show "would
+  this have alerted?" without risking a real message
+
+See [`docs/ARCHITECTURE_PHASE9.md`](docs/ARCHITECTURE_PHASE9.md) for the full design.
+
+**207 passing tests total, CI on every push.**
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add your free FRED API key + SEC_USER_AGENT
+cp .env.example .env   # add your free FRED API key + SEC_USER_AGENT (+ Telegram credentials, optional)
 python scripts/demo_refresh.py
 python scripts/demo_agents.py
 python scripts/demo_commodity_fx_agents.py
@@ -162,6 +183,7 @@ python scripts/demo_sentiment_technical_agents.py
 python scripts/demo_risk_officer.py
 python scripts/demo_strategy_officer.py
 python scripts/demo_learning_officer.py
+python scripts/demo_execution_officer.py
 pytest tests/ -v
 ```
 
@@ -173,18 +195,18 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
 connectors/    FRED, CFTC COT, Yahoo (quote + history), SEC EDGAR, Binance, News RSS
-agents/        BaseAgent + PortfolioAgent + ChiefStrategyOfficer + ChiefLearningOfficer
-               + all 11 Chief Officers (Phases 2-8)
-models/        AgentReport, Portfolio, Position, StrategyReport (Phases 2, 6 & 7)
+agents/        All 12 Chief Officers + BaseAgent/PortfolioAgent patterns (Phases 2-9 — complete)
+models/        AgentReport, Portfolio, Position, StrategyReport, ExecutionDecision
 database/      SQLite persistence: report_store.py, schema.py (Phase 8 — built)
+telegram/      TelegramAlerter — free Bot API wrapper (Phase 9 — built)
 config/        Settings + refresh interval defaults
-tests/         190 passing tests, network-independent (fake sources, mocked HTTP)
+tests/         207 passing tests, network-independent (fake sources, mocked HTTP)
 scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
                demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py,
-               demo_risk_officer.py, demo_strategy_officer.py, demo_learning_officer.py
-docs/          Architecture (Phases 1-8), installation, configuration, roadmap
-dashboard/     Reserved: Streamlit dashboard (later phase)
-telegram/      Reserved: Chief Execution Officer alerting (later phase)
+               demo_risk_officer.py, demo_strategy_officer.py, demo_learning_officer.py,
+               demo_execution_officer.py
+docs/          Architecture (Phases 1-9), installation, configuration, roadmap
+dashboard/     Reserved: Streamlit dashboard (Phase 10)
 data/          Reserved: local caches/fixtures (later phase)
 utils/         Shared logging setup
 ```

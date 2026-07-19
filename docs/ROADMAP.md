@@ -66,8 +66,14 @@ starts, per the project's delivery principle.
       and `strategy_accuracy_summary()` analytics methods. 19 new tests
       (190 total), `scripts/demo_learning_officer.py`. See
       `docs/ARCHITECTURE_PHASE8.md`.
-- [ ] **Phase 9 — Chief Execution Officer + `telegram/`**
-      Gated Telegram alerting once confidence/agreement thresholds are met.
+- [x] **Phase 9 — Chief Execution Officer + `telegram/`** (this delivery)
+      The twelfth and final Chief Officer. Gated alerting: reads a
+      StrategyReport, checks confidence/bias-strength/risk/data-coverage
+      thresholds, and only sends via the new free `TelegramAlerter`
+      (`telegram/telegram_alerter.py`) when every threshold clears — every
+      blocking reason is independently recorded and auditable. New
+      `ExecutionDecision` model. 17 new tests (207 total),
+      `scripts/demo_execution_officer.py`. See `docs/ARCHITECTURE_PHASE9.md`.
 - [ ] **Phase 10 — Streamlit dashboard (`dashboard/`)**
       Multi-page dashboard surfacing every department, starting with a
       data-health panel built directly on `DataIntegrityManager.status_report()`.
