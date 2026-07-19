@@ -58,8 +58,14 @@ starts, per the project's delivery principle.
       text. Extracted shared `agents/risk_severity.py`. New
       `models/strategy_report.py`. 14 new tests (171 total),
       `scripts/demo_strategy_officer.py`. See `docs/ARCHITECTURE_PHASE7.md`.
-- [ ] **Phase 8 — Chief Learning Officer + `database/`**
-      Persistence for every report/alert/thesis/outcome; performance analytics.
+- [x] **Phase 8 — Chief Learning Officer + `database/`** (this delivery)
+      A fourth architectural shape: no `analyze()` method at all — a
+      persistence sink and performance-analytics query engine. New
+      SQLite-based `database/report_store.py` + `database/schema.py`
+      (stdlib only, no new dependency). `department_performance_summary()`
+      and `strategy_accuracy_summary()` analytics methods. 19 new tests
+      (190 total), `scripts/demo_learning_officer.py`. See
+      `docs/ARCHITECTURE_PHASE8.md`.
 - [ ] **Phase 9 — Chief Execution Officer + `telegram/`**
       Gated Telegram alerting once confidence/agreement thresholds are met.
 - [ ] **Phase 10 — Streamlit dashboard (`dashboard/`)**

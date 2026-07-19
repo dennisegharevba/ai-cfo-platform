@@ -127,7 +127,27 @@ together instead of sitting side by side.
 
 See [`docs/ARCHITECTURE_PHASE7.md`](docs/ARCHITECTURE_PHASE7.md) for the full design.
 
-**171 passing tests total, CI on every push.**
+## Phase 8 (current): Chief Learning Officer
+
+The platform's memory — a fourth architectural shape with no `analyze()`
+method at all.
+
+- New SQLite-based `database/report_store.py` (free, Python stdlib only,
+  zero external server) — stores every `AgentReport` and `StrategyReport`
+  ever produced, plus manually-recorded outcomes
+- `department_performance_summary()` — report counts, average confidence,
+  bias distribution, and how often a department was working with degraded
+  data, per department
+- `strategy_accuracy_summary()` — win rate and average realized return
+  across every judged strategy report; unjudged theses are excluded rather
+  than counted as losses
+- Outcomes are recorded manually/after the fact (never computed from a
+  trade — this platform never places one), consistent with the rest of the
+  platform's "never fabricate a result you don't actually have" principle
+
+See [`docs/ARCHITECTURE_PHASE8.md`](docs/ARCHITECTURE_PHASE8.md) for the full design.
+
+**190 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -141,6 +161,7 @@ python scripts/demo_equity_crypto_agents.py
 python scripts/demo_sentiment_technical_agents.py
 python scripts/demo_risk_officer.py
 python scripts/demo_strategy_officer.py
+python scripts/demo_learning_officer.py
 pytest tests/ -v
 ```
 
@@ -152,17 +173,18 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
 connectors/    FRED, CFTC COT, Yahoo (quote + history), SEC EDGAR, Binance, News RSS
-agents/        BaseAgent + PortfolioAgent + ChiefStrategyOfficer + all 10 Chief Officers (Phases 2-7)
+agents/        BaseAgent + PortfolioAgent + ChiefStrategyOfficer + ChiefLearningOfficer
+               + all 11 Chief Officers (Phases 2-8)
 models/        AgentReport, Portfolio, Position, StrategyReport (Phases 2, 6 & 7)
+database/      SQLite persistence: report_store.py, schema.py (Phase 8 — built)
 config/        Settings + refresh interval defaults
-tests/         171 passing tests, network-independent (fake sources, mocked HTTP)
+tests/         190 passing tests, network-independent (fake sources, mocked HTTP)
 scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
                demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py,
-               demo_risk_officer.py, demo_strategy_officer.py
-docs/          Architecture (Phases 1-7), installation, configuration, roadmap
+               demo_risk_officer.py, demo_strategy_officer.py, demo_learning_officer.py
+docs/          Architecture (Phases 1-8), installation, configuration, roadmap
 dashboard/     Reserved: Streamlit dashboard (later phase)
 telegram/      Reserved: Chief Execution Officer alerting (later phase)
-database/      Reserved: Chief Learning Officer persistence (later phase)
 data/          Reserved: local caches/fixtures (later phase)
 utils/         Shared logging setup
 ```
