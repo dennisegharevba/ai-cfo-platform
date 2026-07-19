@@ -103,7 +103,31 @@ of positions rather than one asset/theme.
 
 See [`docs/ARCHITECTURE_PHASE6.md`](docs/ARCHITECTURE_PHASE6.md) for the full design.
 
-**157 passing tests total, CI on every push.**
+## Phase 7 (current): Chief Strategy Officer
+
+The synthesis layer — where all 9 agents built so far finally work
+together instead of sitting side by side.
+
+- A third architectural shape: fetches no data itself, only consumes
+  `AgentReport`s other agents already produced
+- Confidence-weighted synthesis (`department_weight × confidence/100`),
+  with sentiment/technical weighted below the fundamental desks by default
+  (configurable)
+- Genuine disagreement resolution: a weighted standard deviation across
+  departments' bias scores both pulls the overall score toward neutral AND
+  separately docks confidence — so "everyone agrees it's neutral" and
+  "departments are split 50/50" don't get reported with the same confidence
+- The Chief Risk Officer's report is handled specially: excluded from the
+  directional math (it's always neutral by design) but still escalates the
+  final risk level and contributes its risks to the output
+- Produces Overall Market Score, Confidence Score, Risk Level, Directional
+  Bias, Trade Thesis, Catalysts/Risks, qualitative Invalidation Notes, and
+  an Investment Committee Summary — all via deterministic templating, no
+  LLM call
+
+See [`docs/ARCHITECTURE_PHASE7.md`](docs/ARCHITECTURE_PHASE7.md) for the full design.
+
+**171 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -116,6 +140,7 @@ python scripts/demo_commodity_fx_agents.py
 python scripts/demo_equity_crypto_agents.py
 python scripts/demo_sentiment_technical_agents.py
 python scripts/demo_risk_officer.py
+python scripts/demo_strategy_officer.py
 pytest tests/ -v
 ```
 
@@ -127,14 +152,14 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
 connectors/    FRED, CFTC COT, Yahoo (quote + history), SEC EDGAR, Binance, News RSS
-agents/        BaseAgent + PortfolioAgent + all 9 Chief Officers (Phases 2-6)
-models/        AgentReport, Portfolio, Position (Phases 2 & 6 — built)
+agents/        BaseAgent + PortfolioAgent + ChiefStrategyOfficer + all 10 Chief Officers (Phases 2-7)
+models/        AgentReport, Portfolio, Position, StrategyReport (Phases 2, 6 & 7)
 config/        Settings + refresh interval defaults
-tests/         157 passing tests, network-independent (fake sources, mocked HTTP)
+tests/         171 passing tests, network-independent (fake sources, mocked HTTP)
 scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
                demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py,
-               demo_risk_officer.py
-docs/          Architecture (Phases 1-6), installation, configuration, roadmap
+               demo_risk_officer.py, demo_strategy_officer.py
+docs/          Architecture (Phases 1-7), installation, configuration, roadmap
 dashboard/     Reserved: Streamlit dashboard (later phase)
 telegram/      Reserved: Chief Execution Officer alerting (later phase)
 database/      Reserved: Chief Learning Officer persistence (later phase)

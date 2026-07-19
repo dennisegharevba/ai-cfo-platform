@@ -5,18 +5,21 @@ Phase 2: Chief Macro Officer, Chief Bond Strategist.
 Phase 3: Chief Commodity Analyst, Chief FX Analyst.
 Phase 4: Chief Equity Analyst, Chief Cryptocurrency Analyst.
 Phase 5: Chief Sentiment Officer, Chief Technical Officer.
-Phase 6 (this delivery): Chief Risk Officer.
+Phase 6: Chief Risk Officer.
+Phase 7 (this delivery): Chief Strategy Officer.
 
-Every single-asset agent inherits from BaseAgent (see base_agent.py), which
-enforces the platform's hard rule: no agent may produce a directional call
-using data that isn't `Dataset.is_usable()`. The Chief Risk Officer instead
-inherits from PortfolioAgent (see portfolio_agent_base.py) — the same rule,
-applied across a whole Portfolio of positions rather than one asset/theme.
-See docs/ARCHITECTURE.md and the per-phase docs/ARCHITECTURE_PHASE*.md files
-for the full patterns.
+Three architectural shapes exist:
+- BaseAgent: single-asset agents that fetch data via DataIntegrityManager
+  (Phases 2-5).
+- PortfolioAgent: agents that analyze a whole Portfolio of positions,
+  same data-integrity contract, keyed by symbol (Phase 6).
+- ChiefStrategyOfficer: fetches NO data itself — pure synthesis over
+  AgentReports other agents already produced (Phase 7).
 
-Remaining three officers (Strategy, Learning, Execution) land in later
-phases.
+See docs/ARCHITECTURE.md and the per-phase docs/ARCHITECTURE_PHASE*.md
+files for the full patterns.
+
+Remaining two officers (Learning, Execution) land in later phases.
 """
 
 from .base_agent import BaseAgent
@@ -31,6 +34,7 @@ from .chief_sentiment_officer import ChiefSentimentOfficer
 from .chief_technical_officer import ChiefTechnicalOfficer
 from .portfolio_agent_base import PortfolioAgent
 from .chief_risk_officer import ChiefRiskOfficer
+from .chief_strategy_officer import ChiefStrategyOfficer
 
 __all__ = [
     "BaseAgent",
@@ -45,4 +49,5 @@ __all__ = [
     "ChiefTechnicalOfficer",
     "PortfolioAgent",
     "ChiefRiskOfficer",
+    "ChiefStrategyOfficer",
 ]

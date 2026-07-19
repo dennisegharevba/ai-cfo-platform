@@ -39,6 +39,7 @@ from .portfolio_agent_base import PortfolioAgent
 from .risk_calculations import (
     daily_returns, annualized_volatility, historical_var, max_drawdown, pearson_correlation,
 )
+from .risk_severity import worse_risk_level as _worse
 
 CONCENTRATION_ELEVATED_PCT = 40.0
 CONCENTRATION_HIGH_PCT = 60.0
@@ -49,12 +50,6 @@ VAR95_HIGH_PCT = 5.0
 DRAWDOWN_ELEVATED_PCT = -20.0
 DRAWDOWN_HIGH_PCT = -35.0
 CORRELATION_ELEVATED = 0.7
-
-_SEVERITY_ORDER = [RiskLevel.LOW, RiskLevel.MODERATE, RiskLevel.ELEVATED, RiskLevel.HIGH]
-
-
-def _worse(a: RiskLevel, b: RiskLevel) -> RiskLevel:
-    return a if _SEVERITY_ORDER.index(a) >= _SEVERITY_ORDER.index(b) else b
 
 
 def _closes_oldest_first(history: List[dict]) -> List[float]:

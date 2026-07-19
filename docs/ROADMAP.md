@@ -47,9 +47,17 @@ starts, per the project's delivery principle.
       `YahooHistoryConnector` across multiple symbols. 25 new tests
       (157 total), `scripts/demo_risk_officer.py`. See
       `docs/ARCHITECTURE_PHASE6.md`.
-- [ ] **Phase 7 — Chief Strategy Officer**
-      The synthesis layer: collects every department's report, resolves
-      conflicts, produces the final institutional outlook.
+- [x] **Phase 7 — Chief Strategy Officer** (this delivery)
+      The synthesis layer, and a third architectural shape: fetches no
+      data itself, only consumes AgentReports other agents already
+      produced. Confidence-weighted synthesis across departments (weight ×
+      confidence/100), a disagreement penalty via weighted standard
+      deviation of bias scores, special handling for the always-neutral
+      Chief Risk Officer report (excluded from bias math, still escalates
+      risk_level), and templated trade-thesis/investment-committee-summary
+      text. Extracted shared `agents/risk_severity.py`. New
+      `models/strategy_report.py`. 14 new tests (171 total),
+      `scripts/demo_strategy_officer.py`. See `docs/ARCHITECTURE_PHASE7.md`.
 - [ ] **Phase 8 — Chief Learning Officer + `database/`**
       Persistence for every report/alert/thesis/outcome; performance analytics.
 - [ ] **Phase 9 — Chief Execution Officer + `telegram/`**
