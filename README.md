@@ -168,13 +168,36 @@ The final officer, and a gate rather than an analyst.
 
 See [`docs/ARCHITECTURE_PHASE9.md`](docs/ARCHITECTURE_PHASE9.md) for the full design.
 
-**207 passing tests total, CI on every push.**
+## Phase 10 (current): Streamlit Dashboard
+
+A real, working multi-page dashboard — not a mockup — over everything
+built in Phases 1-9.
+
+- **Data Health** — live status of every registered data source
+- **Department Reports** — run any single-asset Chief Officer live
+- **Strategy Synthesis** — Chief Strategy Officer's cross-department resolution
+- **Risk Officer** — interactive portfolio builder + live risk analysis
+- **Performance & Learning** — real persistent history + analytics
+- **Alerts & Execution** — adjustable gating thresholds + a real (safety-railed) Telegram send
+
+Verified with Streamlit's own `AppTest` harness — every page is actually
+executed (not just curl'd) and its primary button clicked, with no network
+access, matching CI conditions exactly.
+
+See [`docs/ARCHITECTURE_PHASE10.md`](docs/ARCHITECTURE_PHASE10.md) for the full design.
+
+**220 passing tests total, CI on every push.**
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # add your free FRED API key + SEC_USER_AGENT (+ Telegram credentials, optional)
+
+# Run the dashboard:
+streamlit run dashboard/Home.py
+
+# Or run any individual phase's demo script:
 python scripts/demo_refresh.py
 python scripts/demo_agents.py
 python scripts/demo_commodity_fx_agents.py
@@ -184,6 +207,7 @@ python scripts/demo_risk_officer.py
 python scripts/demo_strategy_officer.py
 python scripts/demo_learning_officer.py
 python scripts/demo_execution_officer.py
+
 pytest tests/ -v
 ```
 
@@ -199,14 +223,14 @@ agents/        All 12 Chief Officers + BaseAgent/PortfolioAgent patterns (Phases
 models/        AgentReport, Portfolio, Position, StrategyReport, ExecutionDecision
 database/      SQLite persistence: report_store.py, schema.py (Phase 8 — built)
 telegram/      TelegramAlerter — free Bot API wrapper (Phase 9 — built)
+dashboard/     Multi-page Streamlit app: Home.py + pages/ (Phase 10 — built)
 config/        Settings + refresh interval defaults
-tests/         207 passing tests, network-independent (fake sources, mocked HTTP)
+tests/         220 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
 scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
                demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py,
                demo_risk_officer.py, demo_strategy_officer.py, demo_learning_officer.py,
                demo_execution_officer.py
-docs/          Architecture (Phases 1-9), installation, configuration, roadmap
-dashboard/     Reserved: Streamlit dashboard (Phase 10)
+docs/          Architecture (Phases 1-10), installation, configuration, roadmap
 data/          Reserved: local caches/fixtures (later phase)
 utils/         Shared logging setup
 ```

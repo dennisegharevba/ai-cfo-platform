@@ -20,6 +20,17 @@ cp .env.example .env
 # edit .env and paste in your FRED_API_KEY
 ```
 
+## Run the dashboard
+
+```bash
+streamlit run dashboard/Home.py
+```
+
+Opens a multi-page app in your browser (Data Health, Department Reports,
+Strategy Synthesis, Risk Officer, Performance & Learning, Alerts &
+Execution — see docs/ARCHITECTURE_PHASE10.md). Needs the same `.env`
+values as the demo scripts below to show live data.
+
 ## Run the Phase 1 demo
 
 ```bash

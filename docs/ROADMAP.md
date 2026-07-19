@@ -74,8 +74,14 @@ starts, per the project's delivery principle.
       blocking reason is independently recorded and auditable. New
       `ExecutionDecision` model. 17 new tests (207 total),
       `scripts/demo_execution_officer.py`. See `docs/ARCHITECTURE_PHASE9.md`.
-- [ ] **Phase 10 — Streamlit dashboard (`dashboard/`)**
-      Multi-page dashboard surfacing every department, starting with a
-      data-health panel built directly on `DataIntegrityManager.status_report()`.
+- [x] **Phase 10 — Streamlit dashboard (`dashboard/`)** (this delivery)
+      Multi-page dashboard (Streamlit's native `pages/` convention): Data
+      Health, Department Reports, Strategy Synthesis, Risk Officer,
+      Performance & Learning, Alerts & Execution. First new dependency
+      since Phase 1 (`streamlit`). New `DataIntegrityManager.is_registered()`
+      public method. Verified with Streamlit's own `AppTest` harness (not
+      just a curl smoke test) — 12 new tests (220 total) that actually
+      execute every page and click its primary button with no network
+      access, same as CI. See `docs/ARCHITECTURE_PHASE10.md`.
 - [ ] **Phase 11 — GitHub Actions scheduled automation**
       Event-driven + scheduled refresh workflows once there are agents to feed.

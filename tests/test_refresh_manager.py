@@ -135,3 +135,11 @@ def test_status_report_reflects_cached_datasets():
     assert len(report) == 1
     assert report[0]["name"] == "KEY1"
     assert report[0]["usable_now"] is True
+
+
+def test_is_registered_reflects_registration_state():
+    manager = DataIntegrityManager()
+    assert manager.is_registered("KEY1") is False
+    manager.register("KEY1", primary=FakeGoodSource())
+    assert manager.is_registered("KEY1") is True
+    assert manager.is_registered("KEY2") is False

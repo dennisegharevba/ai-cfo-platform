@@ -229,6 +229,12 @@ class DataIntegrityManager:
         """Full audit trail of every refresh this manager has performed."""
         return list(self._refresh_log)
 
+    def is_registered(self, key: str) -> bool:
+        """Whether a dataset key has already been registered — useful for
+        callers (e.g. the dashboard) that register lazily across reruns and
+        want to avoid re-registering the same key repeatedly."""
+        return key in self._registrations
+
     def status_report(self) -> List[dict]:
         """Snapshot of every currently cached dataset's integrity status — for the dashboard."""
         report = []
