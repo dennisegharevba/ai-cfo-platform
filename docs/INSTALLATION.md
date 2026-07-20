@@ -31,6 +31,18 @@ Strategy Synthesis, Risk Officer, Performance & Learning, Alerts &
 Execution — see docs/ARCHITECTURE_PHASE10.md). Needs the same `.env`
 values as the demo scripts below to show live data.
 
+## Run the full automated research cycle
+
+```bash
+python scripts/run_daily_cycle.py
+```
+
+Runs every asset in `config/watchlist.py` through its configured
+departments, synthesizes, persists to `ai_cfo_platform.db`, and alerts via
+Telegram if configured and the Chief Execution Officer's gate clears. This
+is the same script GitHub Actions runs on a schedule — see
+docs/ARCHITECTURE_PHASE11.md and .github/workflows/scheduled_run.yml.
+
 ## Run the Phase 1 demo
 
 ```bash

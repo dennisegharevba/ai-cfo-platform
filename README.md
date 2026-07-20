@@ -8,10 +8,10 @@ commodities, equities, indices, ETFs, futures, forex, bonds, and crypto.
 research, probability-based directional bias, and gated alerts (Telegram +
 dashboard) for a human to act on.
 
-Built in fully working, tested, documented phases. All 12 Chief Officers
-from the original spec are now built (Phases 1-9); see
-[`docs/ROADMAP.md`](docs/ROADMAP.md) for what's left (dashboard +
-scheduled automation).
+Built in fully working, tested, documented phases. All 11 phases on the
+original roadmap are now complete — all 12 Chief Officers, a dashboard,
+and scheduled automation. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
+full history.
 
 ## Phase 1: Data Integrity & Refresh Manager
 
@@ -186,7 +186,25 @@ access, matching CI conditions exactly.
 
 See [`docs/ARCHITECTURE_PHASE10.md`](docs/ARCHITECTURE_PHASE10.md) for the full design.
 
-**220 passing tests total, CI on every push.**
+## Phase 11 (current, final): Scheduled Automation — all 11 phases complete
+
+The pipeline now runs unattended, on a schedule, instead of via manual
+demo scripts or dashboard clicks.
+
+- New `config/watchlist.py` — what the automated cycle covers, editable
+  without touching code
+- New `scripts/run_daily_cycle.py` — runs every watchlist entry through
+  its configured departments, synthesizes, persists, and evaluates for
+  alerting; one asset's failure is isolated and logged, never stops the
+  rest of the cycle
+- New `.github/workflows/scheduled_run.yml` — cron (weekdays 13:00 UTC) +
+  manual trigger, credentials from GitHub Actions secrets, with the
+  database persisted across ephemeral runners via `actions/cache` (the
+  tradeoffs of that approach are documented honestly, not glossed over)
+
+See [`docs/ARCHITECTURE_PHASE11.md`](docs/ARCHITECTURE_PHASE11.md) for the full design.
+
+**225 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -196,6 +214,9 @@ cp .env.example .env   # add your free FRED API key + SEC_USER_AGENT (+ Telegram
 
 # Run the dashboard:
 streamlit run dashboard/Home.py
+
+# Run the full automated research cycle manually:
+python scripts/run_daily_cycle.py
 
 # Or run any individual phase's demo script:
 python scripts/demo_refresh.py
@@ -211,6 +232,15 @@ python scripts/demo_execution_officer.py
 pytest tests/ -v
 ```
 
+## Setting up scheduled automation on your own repo
+
+1. Go to your repo's **Settings → Secrets and variables → Actions**
+2. Add secrets: `FRED_API_KEY`, `SEC_USER_AGENT`, and (optionally)
+   `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
+3. The workflow in `.github/workflows/scheduled_run.yml` runs automatically
+   on its cron schedule, or trigger it manually from the **Actions** tab
+   any time via "Run workflow"
+
 See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for details.
 
@@ -224,13 +254,18 @@ models/        AgentReport, Portfolio, Position, StrategyReport, ExecutionDecisi
 database/      SQLite persistence: report_store.py, schema.py (Phase 8 — built)
 telegram/      TelegramAlerter — free Bot API wrapper (Phase 9 — built)
 dashboard/     Multi-page Streamlit app: Home.py + pages/ (Phase 10 — built)
-config/        Settings + refresh interval defaults
-tests/         220 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
-scripts/       demo_refresh.py, demo_agents.py, demo_commodity_fx_agents.py,
-               demo_equity_crypto_agents.py, demo_sentiment_technical_agents.py,
-               demo_risk_officer.py, demo_strategy_officer.py, demo_learning_officer.py,
-               demo_execution_officer.py
-docs/          Architecture (Phases 1-10), installation, configuration, roadmap
-data/          Reserved: local caches/fixtures (later phase)
+config/        Settings, refresh intervals, watchlist.py (Phase 11 — built)
+tests/         225 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
+scripts/       demo_*.py (Phases 1-9) + run_daily_cycle.py (Phase 11 — the production entry point)
+docs/          Architecture (Phases 1-11), installation, configuration, roadmap
+data/          Reserved: local caches/fixtures (not needed yet)
 utils/         Shared logging setup
 ```
+
+## This project is now complete
+
+All 11 phases on the original roadmap are built, tested, and documented:
+data integrity, all 12 Chief Officers, a dashboard, and scheduled
+automation. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full history
+and [`docs/ARCHITECTURE_PHASE11.md`](docs/ARCHITECTURE_PHASE11.md) for
+natural next steps beyond the original spec.

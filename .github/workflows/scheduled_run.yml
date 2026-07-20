@@ -1,0 +1,66 @@
+name: Scheduled Research Cycle
+
+on:
+  schedule:
+    # 13:00 UTC, Monday-Friday — after US markets have opened and most
+    # overnight data (COT reports on Fridays, EIA/economic releases) has
+    # settled. Adjust to your own timezone/preferences.
+    - cron: "0 13 * * 1-5"
+  workflow_dispatch: {}   # lets you trigger a run manually from the Actions tab
+
+jobs:
+  daily-research-cycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # SQLite persistence across scheduled runs, the free/lightweight way:
+      # GitHub Actions runners are ephemeral, so the .db file this job
+      # creates would vanish at the end of every run without this. Cache
+      # keys are immutable once written, so this restores the most recent
+      # matching entry (via restore-keys prefix match) and always saves a
+      # NEW entry keyed by this run's ID — see docs/ARCHITECTURE_PHASE11.md
+      # for why this accumulates entries over time rather than truly
+      # "updating" one, and why that's an acceptable tradeoff at this
+      # project's scale (a real production deployment should back this
+      # with a persistent external database instead).
+      - name: Restore report database from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ai_cfo_platform.db
+          key: ai-cfo-db-${{ github.run_id }}
+          restore-keys: |
+            ai-cfo-db-
+
+      - name: Run daily research cycle
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/run_daily_cycle.py
+
+      - name: Save report database to cache
+        if: always()   # persist whatever was recorded even if a later step fails
+        uses: actions/cache/save@v4
+        with:
+          path: ai_cfo_platform.db
+          key: ai-cfo-db-${{ github.run_id }}
+
+      - name: Upload report database as a build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cfo-platform-db-${{ github.run_id }}
+          path: ai_cfo_platform.db
+          retention-days: 30

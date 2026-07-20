@@ -83,5 +83,12 @@ starts, per the project's delivery principle.
       just a curl smoke test) — 12 new tests (220 total) that actually
       execute every page and click its primary button with no network
       access, same as CI. See `docs/ARCHITECTURE_PHASE10.md`.
-- [ ] **Phase 11 — GitHub Actions scheduled automation**
-      Event-driven + scheduled refresh workflows once there are agents to feed.
+- [x] **Phase 11 — GitHub Actions scheduled automation** (this delivery)
+      New `config/watchlist.py` + `scripts/run_daily_cycle.py` (per-asset
+      isolated: one asset's failure never stops the rest of the cycle) +
+      `.github/workflows/scheduled_run.yml` (cron + manual trigger,
+      secrets-based credentials, cache-based SQLite persistence across
+      ephemeral runners with the tradeoffs documented honestly). 5 new
+      tests (225 total). See `docs/ARCHITECTURE_PHASE11.md`.
+
+**This completes every phase on the original roadmap.**
