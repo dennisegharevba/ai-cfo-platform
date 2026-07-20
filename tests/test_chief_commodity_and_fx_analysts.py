@@ -12,18 +12,28 @@ class FakeCotSource(DataSource):
     name = "FAKE_COT"
     default_ttl_seconds = 300
 
-    def __init__(self, weekly_rows):
-        """weekly_rows: list of (noncomm_long, noncomm_short, open_interest), newest first."""
+    def __init__(self, weekly_rows, comm_rows=None):
+        """
+        weekly_rows: list of (noncomm_long, noncomm_short, open_interest), newest first.
+        comm_rows: optional list of (comm_long, comm_short), same length/order as
+            weekly_rows — omit to simulate a payload with no commercial data at all.
+        """
         self.weekly_rows = weekly_rows
+        self.comm_rows = comm_rows
 
     def fetch(self, **kwargs):
-        history = [
-            {
+        history = []
+        for i, (l, s, oi) in enumerate(self.weekly_rows):
+            row = {
                 "report_date": f"2026-06-{i+1:02d}",
                 "noncomm_long": str(l), "noncomm_short": str(s), "open_interest": str(oi),
             }
-            for i, (l, s, oi) in enumerate(self.weekly_rows)
-        ]
+            if self.comm_rows is not None:
+                cl, cs = self.comm_rows[i]
+                row["comm_long"] = str(cl)
+                row["comm_short"] = str(cs)
+            history.append(row)
+
         payload = {
             "market": "TEST MARKET",
             "report_date": history[0]["report_date"],
@@ -88,3 +98,37 @@ def test_different_agent_instances_use_independent_cot_keys():
     gold_report = gold_agent.analyze("Gold")
     silver_report = silver_agent.analyze("Silver")
     assert gold_report.bias_score != silver_report.bias_score
+
+
+def test_speculative_and_commercial_agreement_gives_full_confidence():
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    # Both speculators AND commercials building net length -> agreement
+    manager.register("COT_GOLD", primary=FakeCotSource(
+        weekly_rows=[(120000, 80000, 500000), (95000, 82000, 480000)],
+        comm_rows=[(90000, 60000), (70000, 65000)],
+    ))
+    report = ChiefCommodityAnalyst(manager, cot_key="COT_GOLD").analyze("Gold")
+    assert report.confidence == 100.0  # 40 base + 30*2 components
+    assert report.bias in (Bias.BULLISH, Bias.STRONGLY_BULLISH)
+    assert any("commercial" in e.lower() for e in report.evidence)
+
+
+def test_diverging_speculative_and_commercial_positioning_flagged_as_risk():
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    # Speculators building length while commercials are cutting theirs -> divergence
+    manager.register("COT_GOLD", primary=FakeCotSource(
+        weekly_rows=[(150000, 50000, 500000), (80000, 70000, 480000)],   # spec net: 10000 -> 100000 (building)
+        comm_rows=[(50000, 150000), (70000, 80000)],                      # comm net: -10000 -> -100000 (cutting)
+    ))
+    report = ChiefCommodityAnalyst(manager, cot_key="COT_GOLD").analyze("Gold")
+    assert report.risk_level == RiskLevel.ELEVATED
+    assert any("diverg" in r.lower() for r in report.risks)
+
+
+def test_missing_commercial_data_still_scores_from_speculative_alone():
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    # No comm_rows supplied at all -> payload has no comm_long/comm_short fields
+    manager.register("COT_GOLD", primary=FakeCotSource([(120000, 80000, 500000), (95000, 82000, 480000)]))
+    report = ChiefCommodityAnalyst(manager, cot_key="COT_GOLD").analyze("Gold")
+    assert report.confidence == 70.0  # only the speculative component available
+    assert not any("commercial" in e.lower() for e in report.evidence)

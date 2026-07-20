@@ -79,3 +79,46 @@ internet access for real positioning-driven output.
 - USDA/WASDE/EIA/weather connectors (commodity-specific fundamentals)
 - Rate differential / DXY logic (FX-specific fundamentals)
 - Any persistence, alerting, or dashboard surfacing of these reports
+
+## Update (post-Phase 7): commercial positioning added alongside speculative
+
+The original Phase 3 build scored ONLY non-commercial (speculative)
+positioning. After the platform was further along (Phases 4-11 built), this
+was revisited to add **commercial (producer/hedger) positioning** as a
+second, blended signal — both derived from data the `CotConnector` was
+already fetching (`comm_long`/`comm_short` were present in every payload
+from Phase 3 onward, just unused until now).
+
+**Why both, not a swap:** speculative and commercial positioning answer
+different questions. Speculative positioning tends to be trend-following —
+useful for momentum and for the existing "crowded trade" risk flag.
+Commercial positioning reflects real hedging exposure against underlying
+business activity, and is often read as a structural "smart money"
+indicator that moves independently of (sometimes opposite to) the
+speculative crowd. Replacing one with the other would have thrown away a
+real signal; blending them (60% speculative / 40% commercial, the same
+weighted-average pattern used everywhere else in this codebase) uses both.
+
+**`agents/positioning_scoring.py`'s `net_position_trend_score`** was
+generalized to accept `long_key`/`short_key` parameters (defaulting to
+`noncomm_long`/`noncomm_short` for full backward compatibility with every
+existing caller, including `ChiefSentimentOfficer`) rather than being
+hardcoded to speculative fields — the same "generalize via a key parameter"
+pattern `agents/trend_scoring.py`'s `value_key` already established.
+
+**A genuinely new signal, not just an extra number:** when speculative and
+commercial positioning move in opposite directions by a meaningful margin,
+that divergence is flagged as an elevated risk in its own right — a
+classically-watched warning that a trend may be nearing exhaustion,
+independent of which way the overall bias points. `positioning_extremity_flag`
+(the "crowded trade" check) deliberately stayed speculative-only: commercials
+routinely run large positions as a normal consequence of hedging, so a large
+commercial position isn't a crowd-risk signal the way a large speculative
+one is.
+
+6 new tests cover: commercial-only trend scoring via the generalized key
+parameters, commercial and speculative trends computed independently on
+the same history, agreement between the two boosting confidence to 100
+(40 base + 30 per component), the divergence flag firing correctly, and
+the pre-existing speculative-only behavior still working unchanged when no
+commercial data is present in a payload.

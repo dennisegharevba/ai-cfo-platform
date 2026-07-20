@@ -43,7 +43,7 @@ Officer will follow.
 
 See [`docs/ARCHITECTURE_PHASE2.md`](docs/ARCHITECTURE_PHASE2.md) for the full design.
 
-## Phase 3 (current): Chief Commodity Analyst + Chief FX Analyst
+## Phase 3: Chief Commodity Analyst + Chief FX Analyst
 
 Per-market positioning agents, built on a new shared `PositioningAgent` base.
 
@@ -51,8 +51,13 @@ Per-market positioning agents, built on a new shared `PositioningAgent` base.
   — each is tied to a specific CFTC COT dataset key
 - `CotConnector` extended to fetch multi-week positioning history (not just
   the latest snapshot), so agents can score positioning *trend*
-- Flags "crowded" long/short positioning (>40% of open interest) as an
-  elevated-risk signal, independent of the directional bias itself
+- Blends **speculative (non-commercial) and commercial** positioning trend
+  (60%/40%), rather than speculative alone — the two answer different
+  questions (trend-following crowd behavior vs. real hedging exposure), and
+  when they diverge meaningfully that's flagged as its own elevated-risk
+  signal (a classic "trend nearing exhaustion" warning)
+- Flags "crowded" speculative long/short positioning (>40% of open interest)
+  as an elevated-risk signal, independent of the directional bias itself
 - Chief Commodity Analyst and Chief FX Analyst are currently ~2 lines each —
   all shared logic lives in `PositioningAgent`; they'll diverge once
   commodity-specific (USDA/EIA/weather) and FX-specific (rate differentials,
