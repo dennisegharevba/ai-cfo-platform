@@ -106,10 +106,64 @@ def test_empty_watchlist_returns_empty_results():
 
 
 def test_all_department_runner_keys_have_a_real_handler():
-    """Sanity check: every key mentioned in config/watchlist.py resolves to
-    a real DEPARTMENT_RUNNERS entry, so a typo in the watchlist config would
-    be caught here rather than silently skipping a department in production."""
-    from config.watchlist import WATCHLIST
-    used_keys = {dept_key for entry in WATCHLIST for dept_key in entry["departments"]}
+    """Sanity check: every key mentioned in either watchlist resolves to a
+    real DEPARTMENT_RUNNERS entry, so a typo in the config would be caught
+    here rather than silently skipping a department in production."""
+    from config.watchlist import WATCHLIST_DAILY, WATCHLIST_WEEKLY
+    used_keys = {
+        dept_key
+        for watchlist in (WATCHLIST_DAILY, WATCHLIST_WEEKLY)
+        for entry in watchlist
+        for dept_key in entry["departments"]
+    }
     for key in used_keys:
-        assert key in DEPARTMENT_RUNNERS, f"'{key}' used in WATCHLIST has no matching runner"
+        assert key in DEPARTMENT_RUNNERS, f"'{key}' used in a watchlist has no matching runner"
+
+
+def test_daily_watchlist_has_no_duplicate_assets():
+    from config.watchlist import WATCHLIST_DAILY
+    assets = [entry["asset_or_theme"] for entry in WATCHLIST_DAILY]
+    assert len(assets) == len(set(assets))
+
+
+def test_weekly_watchlist_covers_a_large_ticker_universe():
+    from config.watchlist import WATCHLIST_WEEKLY
+    assets = [entry["asset_or_theme"] for entry in WATCHLIST_WEEKLY]
+    assert len(assets) == len(set(assets))  # no duplicate tickers
+    assert len(assets) > 300  # genuinely broad, not a token handful
+
+
+def test_equity_runner_resolves_cik_automatically(monkeypatch):
+    """The equity department no longer requires a hand-entered 'cik' param —
+    it resolves one via the ticker/CIK lookup, using the exact fake payload
+    shape connectors.sec_ticker_lookup.resolve_cik expects."""
+    import scripts.run_daily_cycle as cycle_module
+
+    def _fake_resolve_cik(manager, ticker, user_agent):
+        return "0000320193" if ticker == "AAPL" else None
+
+    monkeypatch.setattr(cycle_module, "resolve_cik", _fake_resolve_cik)
+    monkeypatch.setattr(cycle_module, "SEC_EQUITY_COURTESY_DELAY_SECONDS", 0.0)
+
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    report = cycle_module._run_equity(manager, "AAPL", {})
+
+    # No live network here, so the report itself will be zero-confidence —
+    # what matters is that it resolved a CIK and registered real connectors
+    # under it without raising, rather than requiring params["cik"].
+    assert manager.is_registered("SEC_AAPL_EPS")
+    assert manager.is_registered("SEC_AAPL_REV")
+    assert report.asset_or_theme == "AAPL"
+
+
+def test_equity_runner_degrades_gracefully_when_ticker_not_found(monkeypatch):
+    import scripts.run_daily_cycle as cycle_module
+
+    monkeypatch.setattr(cycle_module, "resolve_cik", lambda manager, ticker, user_agent: None)
+    monkeypatch.setattr(cycle_module, "SEC_EQUITY_COURTESY_DELAY_SECONDS", 0.0)
+
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    report = cycle_module._run_equity(manager, "NOSUCHTICKER", {})
+
+    assert report.confidence == 0.0
+    assert report.is_degraded() is True

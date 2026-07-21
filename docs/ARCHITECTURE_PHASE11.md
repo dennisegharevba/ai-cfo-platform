@@ -117,3 +117,61 @@ beyond the original spec, not built here:
   into `ChiefStrategyOfficer`'s department weights (the spec's "improve
   future scoring" — Phase 8 already stores and reports the data that would
   inform this)
+
+## Update: broad watchlist coverage (all major FX/commodity futures, ~350 equities)
+
+The original Phase 11 watchlist covered 5 assets. This was later expanded
+substantially:
+
+**Currencies & commodities** (`config/cftc_markets.py`) — every major
+CFTC-tracked FX future (EUR, JPY, GBP, CHF, CAD, AUD, NZD, MXN, BRL, ZAR,
+plus the Dollar Index) and commodity future (metals, energy, grains,
+softs, livestock) CFTC's Legacy Futures-Only report covers, not just Gold
+and EUR/USD.
+
+**Equities** (`config/sp500_tickers.py`, ~357 tickers) — this needed a real
+architectural addition, not just a longer list: hand-typing a CIK for
+every ticker (the original design) doesn't scale and is exactly the kind
+of thing that's error-prone at volume. `connectors/sec_ticker_lookup.py`
+adds `SecTickerCikConnector`, which fetches SEC's own free bulk
+ticker→CIK mapping (`company_tickers.json`) — **one network call resolves
+every ticker**, not one per ticker. `run_daily_cycle.py`'s equity runner
+(and the dashboard's Department Reports equity form) now resolve CIK
+automatically via this, rather than requiring it as a manual input.
+
+**Two honestly-flagged accuracy caveats, both handled the same way:**
+neither the CFTC market name list nor the ticker list could be verified
+against a live source from this development environment (no network
+access here). Both files carry explicit docstring warnings that they're
+best-effort/point-in-time, not a guaranteed-current feed — and
+`scripts/verify_watchlist_markets.py` was added specifically so you can
+check every entry against the real APIs once you have network access,
+rather than discovering problems piecemeal from degraded reports. This
+mirrors the same honesty principle every prior phase followed (e.g. Phase
+6's documented index-alignment simplification): flag the limitation
+explicitly rather than presenting an unverified list as authoritative.
+
+Also worth noting explicitly: even a WRONG market name or delisted ticker
+doesn't break anything — it just shows up as one blocked/zero-confidence
+entry in the cycle summary, because of the per-asset isolation `run_cycle`
+already had. The verification script is about catching problems
+proactively, not because an error would be dangerous.
+
+**Splitting the watchlist by cadence, not just by size:** the ~357-ticker
+equity sweep is deliberately split onto its own **weekly** schedule
+(`.github/workflows/scheduled_run_equities.yml`, Sundays), separate from
+the **daily** workflow (`scheduled_run.yml`, still macro/FX/commodities/
+crypto/sentiment). This isn't just a performance accommodation — running
+EPS/revenue fundamentals through SEC EDGAR every single weekday would
+provide zero additional signal, since those numbers only change on a
+quarterly filing cadence. A small courtesy delay
+(`SEC_EQUITY_COURTESY_DELAY_SECONDS`) was also added between the equity
+department's SEC EDGAR calls specifically, since it's the only department
+making hundreds of calls to one free government API in a single run — this
+value hasn't been tuned against SEC's live servers from this environment,
+so treat it as a reasonable starting point rather than a verified-safe rate.
+
+9 new tests cover the ticker/CIK lookup connector (including that a single
+fetch resolves every subsequent lookup, not one fetch per ticker) and 4
+more cover the equity runner's CIK-resolution and graceful-degradation
+paths in `run_daily_cycle.py`.

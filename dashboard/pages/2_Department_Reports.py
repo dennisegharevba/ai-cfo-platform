@@ -20,6 +20,7 @@ from connectors.fred_connector import FredConnector
 from connectors.cot_connector import CotConnector
 from connectors.yahoo_history_connector import YahooHistoryConnector
 from connectors.sec_edgar_connector import SecEdgarConnector
+from connectors.sec_ticker_lookup import resolve_cik
 from connectors.binance_connector import BinanceFuturesConnector
 from connectors.news_connector import NewsRssConnector
 
@@ -92,15 +93,18 @@ elif department == "Chief FX Analyst":
         report = ChiefFXAnalyst(manager, cot_key=key, min_quality=MIN_DATA_QUALITY).analyze(theme)
 
 elif department == "Chief Equity Analyst":
-    cik = st.text_input("SEC CIK (e.g. Apple = 320193)", value="320193")
-    ticker = st.text_input("Display ticker", value="AAPL")
+    ticker = st.text_input("Ticker (CIK is resolved automatically)", value="AAPL")
     if st.button("Run Chief Equity Analyst", type="primary"):
-        eps_key, rev_key = f"SEC_{ticker}_EPS", f"SEC_{ticker}_REV"
-        if not manager.is_registered(eps_key):
-            manager.register(eps_key, primary=SecEdgarConnector(cik=cik, concept="EarningsPerShareDiluted", user_agent=SEC_USER_AGENT))
-        if not manager.is_registered(rev_key):
-            manager.register(rev_key, primary=SecEdgarConnector(cik=cik, concept="Revenues", user_agent=SEC_USER_AGENT))
-        report = ChiefEquityAnalyst(manager, eps_key=eps_key, revenue_key=rev_key, min_quality=MIN_DATA_QUALITY).analyze(ticker)
+        cik = resolve_cik(manager, ticker, user_agent=SEC_USER_AGENT)
+        if cik is None:
+            st.error(f"Couldn't resolve a CIK for '{ticker}' — check the ticker, or SEC's mapping service may be unreachable.")
+        else:
+            eps_key, rev_key = f"SEC_{ticker}_EPS", f"SEC_{ticker}_REV"
+            if not manager.is_registered(eps_key):
+                manager.register(eps_key, primary=SecEdgarConnector(cik=cik, concept="EarningsPerShareDiluted", user_agent=SEC_USER_AGENT))
+            if not manager.is_registered(rev_key):
+                manager.register(rev_key, primary=SecEdgarConnector(cik=cik, concept="Revenues", user_agent=SEC_USER_AGENT))
+            report = ChiefEquityAnalyst(manager, eps_key=eps_key, revenue_key=rev_key, min_quality=MIN_DATA_QUALITY).analyze(ticker)
 
 elif department == "Chief Cryptocurrency Analyst":
     symbol = st.text_input("Binance futures symbol", value="BTCUSDT")

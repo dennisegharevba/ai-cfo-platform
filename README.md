@@ -196,20 +196,29 @@ See [`docs/ARCHITECTURE_PHASE10.md`](docs/ARCHITECTURE_PHASE10.md) for the full 
 The pipeline now runs unattended, on a schedule, instead of via manual
 demo scripts or dashboard clicks.
 
-- New `config/watchlist.py` — what the automated cycle covers, editable
-  without touching code
+- New `config/watchlist.py` — split into a **daily** watchlist (macro, all
+  major CFTC FX/commodity futures, crypto, sentiment) and a **weekly**
+  watchlist (~357 large-cap equities) on separate GitHub Actions schedules,
+  since fundamentals don't change daily
+- New `connectors/sec_ticker_lookup.py` — resolves any ticker's SEC CIK
+  automatically from one free bulk mapping file, instead of requiring a
+  hand-entered CIK per company (what made broad equity coverage practical)
 - New `scripts/run_daily_cycle.py` — runs every watchlist entry through
   its configured departments, synthesizes, persists, and evaluates for
   alerting; one asset's failure is isolated and logged, never stops the
   rest of the cycle
-- New `.github/workflows/scheduled_run.yml` — cron (weekdays 13:00 UTC) +
-  manual trigger, credentials from GitHub Actions secrets, with the
-  database persisted across ephemeral runners via `actions/cache` (the
-  tradeoffs of that approach are documented honestly, not glossed over)
+- New `.github/workflows/scheduled_run.yml` (daily) and
+  `scheduled_run_equities.yml` (weekly) — cron + manual trigger,
+  credentials from GitHub Actions secrets, database persisted across
+  ephemeral runners via `actions/cache`
+- `scripts/verify_watchlist_markets.py` — a diagnostic tool to check every
+  CFTC market name and ticker against the real APIs (both lists are
+  best-effort/point-in-time, honestly flagged as such — see
+  `docs/ARCHITECTURE_PHASE11.md`)
 
 See [`docs/ARCHITECTURE_PHASE11.md`](docs/ARCHITECTURE_PHASE11.md) for the full design.
 
-**225 passing tests total, CI on every push.**
+**244 passing tests total, CI on every push.**
 
 ## Quick start
 
@@ -220,8 +229,12 @@ cp .env.example .env   # add your free FRED API key + SEC_USER_AGENT (+ Telegram
 # Run the dashboard:
 streamlit run dashboard/Home.py
 
-# Run the full automated research cycle manually:
-python scripts/run_daily_cycle.py
+# Run the automated research cycle manually:
+python scripts/run_daily_cycle.py                    # daily watchlist (macro/FX/commodities/crypto/sentiment)
+python scripts/run_daily_cycle.py --watchlist weekly  # weekly watchlist (~357 equities)
+
+# Check the best-effort CFTC market names / tickers against the real APIs:
+python scripts/verify_watchlist_markets.py
 
 # Or run any individual phase's demo script:
 python scripts/demo_refresh.py
@@ -242,9 +255,12 @@ pytest tests/ -v
 1. Go to your repo's **Settings → Secrets and variables → Actions**
 2. Add secrets: `FRED_API_KEY`, `SEC_USER_AGENT`, and (optionally)
    `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
-3. The workflow in `.github/workflows/scheduled_run.yml` runs automatically
-   on its cron schedule, or trigger it manually from the **Actions** tab
-   any time via "Run workflow"
+3. Two workflows run automatically on their own schedules, or can be
+   triggered manually from the **Actions** tab via "Run workflow":
+   - `.github/workflows/scheduled_run.yml` — daily (weekdays), the fast
+     watchlist (macro/FX/commodities/crypto/sentiment)
+   - `.github/workflows/scheduled_run_equities.yml` — weekly (Sundays),
+     the ~357-ticker equity sweep
 
 See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for details.
@@ -260,7 +276,7 @@ database/      SQLite persistence: report_store.py, schema.py (Phase 8 — built
 telegram/      TelegramAlerter — free Bot API wrapper (Phase 9 — built)
 dashboard/     Multi-page Streamlit app: Home.py + pages/ (Phase 10 — built)
 config/        Settings, refresh intervals, watchlist.py (Phase 11 — built)
-tests/         225 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
+tests/         244 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
 scripts/       demo_*.py (Phases 1-9) + run_daily_cycle.py (Phase 11 — the production entry point)
 docs/          Architecture (Phases 1-11), installation, configuration, roadmap
 data/          Reserved: local caches/fixtures (not needed yet)

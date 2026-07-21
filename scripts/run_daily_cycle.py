@@ -1,27 +1,35 @@
 """
-Daily research cycle — the script GitHub Actions runs on a schedule
-(.github/workflows/scheduled_run.yml). Turns the manual "run a demo script"
-pattern from Phases 2-9 into something that can run unattended: for every
-entry in config/watchlist.py, run the configured departments, synthesize
-via the Chief Strategy Officer, persist everything via the Chief Learning
-Officer, and alert via the Chief Execution Officer if it clears the gate.
+Automated research cycle — the script GitHub Actions runs on a schedule.
+Turns the manual "run a demo script" pattern from Phases 2-9 into
+something that can run unattended: for every entry in the selected
+watchlist (config/watchlist.py), run the configured departments,
+synthesize via the Chief Strategy Officer, persist everything via the
+Chief Learning Officer, and alert via the Chief Execution Officer if it
+clears the gate.
 
-Run manually:
-    python scripts/run_daily_cycle.py
+Two watchlists, two schedules:
+    python scripts/run_daily_cycle.py             # WATCHLIST_DAILY (default)
+    python scripts/run_daily_cycle.py --watchlist weekly   # WATCHLIST_WEEKLY (equities)
+
+See config/watchlist.py's docstring for why equities are split onto a
+separate, less-frequent cadence (fundamentals don't change daily) and
+.github/workflows/ for the two corresponding scheduled workflows.
 
 One asset's failure (e.g. a connector unreachable) is isolated and logged
 — it does NOT stop the rest of the watchlist from being processed. This is
 the same "never let one problem take down the whole system" principle
 behind the Data Integrity & Refresh Manager (Phase 1), applied at the
-orchestration level: a scheduled run with 4 of 5 assets processed and 1
-logged failure is a normal, useful outcome, not something that should be
-treated as a CI-red failure.
+orchestration level: a scheduled run with 350 of 357 assets processed and
+7 logged failures is a normal, useful outcome, not something that should
+be treated as a CI-red failure.
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -31,12 +39,13 @@ from config.settings import (
     FRED_API_KEY, SEC_USER_AGENT, NEWS_RSS_URL, MIN_DATA_QUALITY,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, LOG_LEVEL,
 )
-from config.watchlist import WATCHLIST
+from config.watchlist import WATCHLIST_DAILY, WATCHLIST_WEEKLY
 
 from connectors.fred_connector import FredConnector
 from connectors.cot_connector import CotConnector
 from connectors.yahoo_history_connector import YahooHistoryConnector
 from connectors.sec_edgar_connector import SecEdgarConnector
+from connectors.sec_ticker_lookup import resolve_cik
 from connectors.binance_connector import BinanceFuturesConnector
 from connectors.news_connector import NewsRssConnector
 
@@ -56,6 +65,15 @@ from database.report_store import ReportStore
 from telegram.telegram_alerter import TelegramAlerter
 
 logger = logging.getLogger("ai_cfo.daily_cycle")
+
+# Small courtesy delay between per-ticker SEC EDGAR fundamentals calls,
+# specifically for the equity department (the only one making a large
+# volume of calls to a single free government API in one run — the weekly
+# watchlist alone is ~350 tickers x 2 EDGAR calls). This value hasn't been
+# tuned against SEC's live servers from this environment; treat it as a
+# reasonable starting point, not a guarantee of compliance with any rate
+# limit SEC enforces.
+SEC_EQUITY_COURTESY_DELAY_SECONDS = 0.2
 
 
 def _run_macro(manager: DataIntegrityManager, asset: str, params: dict):
@@ -89,11 +107,25 @@ def _run_fx(manager: DataIntegrityManager, asset: str, params: dict):
 
 
 def _run_equity(manager: DataIntegrityManager, asset: str, params: dict):
+    """
+    asset is treated as the ticker itself (e.g. "AAPL"). CIK is resolved
+    automatically via SEC's free bulk ticker/CIK mapping (one fetch covers
+    every ticker in the watchlist — see connectors/sec_ticker_lookup.py)
+    rather than requiring a hand-entered "cik" param. If the ticker isn't
+    found in that mapping, this returns a zero-confidence report (via
+    BaseAgent's normal missing-data path) rather than raising — a bad
+    ticker in the watchlist degrades gracefully like any other data gap.
+    """
+    cik = params.get("cik") or resolve_cik(manager, asset, user_agent=SEC_USER_AGENT)
     eps_key, rev_key = f"SEC_{asset}_EPS", f"SEC_{asset}_REV"
-    if not manager.is_registered(eps_key):
-        manager.register(eps_key, primary=SecEdgarConnector(cik=params["cik"], concept="EarningsPerShareDiluted", user_agent=SEC_USER_AGENT))
-    if not manager.is_registered(rev_key):
-        manager.register(rev_key, primary=SecEdgarConnector(cik=params["cik"], concept="Revenues", user_agent=SEC_USER_AGENT))
+
+    if cik is not None:
+        if not manager.is_registered(eps_key):
+            manager.register(eps_key, primary=SecEdgarConnector(cik=cik, concept="EarningsPerShareDiluted", user_agent=SEC_USER_AGENT))
+        if not manager.is_registered(rev_key):
+            manager.register(rev_key, primary=SecEdgarConnector(cik=cik, concept="Revenues", user_agent=SEC_USER_AGENT))
+
+    time.sleep(SEC_EQUITY_COURTESY_DELAY_SECONDS)
     return ChiefEquityAnalyst(manager, eps_key=eps_key, revenue_key=rev_key, min_quality=MIN_DATA_QUALITY).analyze(asset)
 
 
@@ -201,12 +233,23 @@ def _build_alerter() -> Optional[TelegramAlerter]:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run the AI CFO Platform's automated research cycle.")
+    parser.add_argument(
+        "--watchlist", choices=["daily", "weekly"], default="daily",
+        help="Which watchlist to run: 'daily' (macro/FX/commodities/crypto/sentiment, fast) "
+             "or 'weekly' (the full equity universe — slower, and only worth running "
+             "as often as fundamentals actually change).",
+    )
+    args = parser.parse_args()
+
+    watchlist = WATCHLIST_WEEKLY if args.watchlist == "weekly" else WATCHLIST_DAILY
+
     logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logger.info("Starting daily research cycle over %d watchlist entries", len(WATCHLIST))
+    logger.info("Starting '%s' research cycle over %d watchlist entries", args.watchlist, len(watchlist))
 
-    results = run_cycle(WATCHLIST)
+    results = run_cycle(watchlist)
 
-    print("\n=== Daily Research Cycle Summary ===")
+    print(f"\n=== {args.watchlist.title()} Research Cycle Summary ({len(results)} entries) ===")
     for r in results:
         if r.get("error"):
             print(f"  ❌ {r['asset']}: ERROR — {r['error']}")

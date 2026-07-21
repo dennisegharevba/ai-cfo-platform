@@ -1,0 +1,66 @@
+name: Scheduled Equity Research Cycle (Weekly)
+
+on:
+  schedule:
+    # 14:00 UTC every Sunday. Deliberately weekly, not daily: EPS/revenue
+    # come from quarterly SEC filings, so re-running ~350 tickers x 2 SEC
+    # EDGAR calls every weekday would just be unnecessary load for data
+    # that hasn't changed since the last run — see config/watchlist.py and
+    # docs/ARCHITECTURE_PHASE11.md for the full reasoning.
+    - cron: "0 14 * * 0"
+  workflow_dispatch: {}
+
+jobs:
+  weekly-equity-cycle:
+    runs-on: ubuntu-latest
+    # A ~350-ticker sweep (2 SEC EDGAR calls + 1 Yahoo history call each,
+    # plus a courtesy delay between SEC calls) genuinely takes a while —
+    # give it real headroom rather than hitting the default job timeout.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Shares the same cache lineage as the daily workflow (see
+      # scheduled_run.yml) — both read/write ai_cfo_platform.db under the
+      # same "ai-cfo-db-" key prefix, so equity and daily results
+      # accumulate into one persisted history rather than two separate ones.
+      - name: Restore report database from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ai_cfo_platform.db
+          key: ai-cfo-db-${{ github.run_id }}
+          restore-keys: |
+            ai-cfo-db-
+
+      - name: Run weekly equity research cycle
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/run_daily_cycle.py --watchlist weekly
+
+      - name: Save report database to cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ai_cfo_platform.db
+          key: ai-cfo-db-${{ github.run_id }}
+
+      - name: Upload report database as a build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cfo-platform-db-weekly-${{ github.run_id }}
+          path: ai_cfo_platform.db
+          retention-days: 30
