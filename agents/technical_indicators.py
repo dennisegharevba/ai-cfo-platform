@@ -104,3 +104,51 @@ def trend_score(closes: List[float], short: int = 20, long: int = 50, normalizat
 
     pct_diff = (short_sma - long_sma) / abs(long_sma) * 100
     return max(-100.0, min(100.0, (pct_diff / normalization_pct) * 100))
+
+
+def atr(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
+    """
+    Average True Range, textbook Wilder definition, in raw price units.
+    All three series must be oldest-first and equal length (matching this
+    module's convention throughout). True range for bar i (i>0) is the
+    largest of: high-low, |high - prev_close|, |low - prev_close|; the
+    first bar has no prior close, so it's excluded from the average.
+
+    Returns None if there isn't enough history (need at least period+1 bars).
+    """
+    n = len(closes)
+    if n < period + 1 or len(highs) != n or len(lows) != n:
+        return None
+
+    true_ranges = []
+    for i in range(1, n):
+        high_low = highs[i] - lows[i]
+        high_prev_close = abs(highs[i] - closes[i - 1])
+        low_prev_close = abs(lows[i] - closes[i - 1])
+        true_ranges.append(max(high_low, high_prev_close, low_prev_close))
+
+    if len(true_ranges) < period:
+        return None
+
+    return sum(true_ranges[-period:]) / period
+
+
+def atr_expansion_pct(highs: List[float], lows: List[float], closes: List[float],
+                       period: int = 14, lookback: int = 14) -> Optional[float]:
+    """
+    How much ATR(period) has expanded/contracted vs. its own reading
+    `lookback` bars ago, as a percentage. Positive = volatility expanding
+    (higher risk of large adverse moves); negative = volatility contracting.
+
+    Returns None if there isn't enough history for both readings.
+    """
+    n = len(closes)
+    if n < period + lookback + 1:
+        return None
+
+    current = atr(highs, lows, closes, period=period)
+    past = atr(highs[:-lookback], lows[:-lookback], closes[:-lookback], period=period)
+    if current is None or past is None or past == 0:
+        return None
+
+    return (current - past) / past * 100

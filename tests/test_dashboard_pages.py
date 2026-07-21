@@ -22,6 +22,7 @@ PAGES = [
     "dashboard/pages/4_Risk_Officer.py",
     "dashboard/pages/5_Performance_Learning.py",
     "dashboard/pages/6_Alerts_Execution.py",
+    "dashboard/pages/7_Trade_Decision_Engine.py",
 ]
 
 
@@ -70,3 +71,48 @@ def test_alerts_execution_with_no_strategy_report_shows_info_not_crash():
     at.run()
     assert not at.exception
     assert len(at.info) >= 1
+
+
+def test_trade_decision_engine_with_empty_pool_shows_info_not_crash():
+    at = AppTest.from_file("dashboard/pages/7_Trade_Decision_Engine.py", default_timeout=30)
+    at.run()
+    assert not at.exception
+    assert len(at.info) >= 1
+
+
+def test_trade_decision_engine_full_flow_does_not_crash():
+    """
+    Runs the decision, then opens and closes a trade via the real form —
+    this is the exact end-to-end path that had a NameError bug (helper
+    functions referenced before their definition) caught during review
+    before this page was ever added to the platform.
+    """
+    from models.report import AgentReport, Bias, RiskLevel
+
+    at = AppTest.from_file("dashboard/pages/7_Trade_Decision_Engine.py", default_timeout=30)
+    at.run()
+    at.session_state["last_agent_reports"] = [
+        AgentReport(department="Chief Macro Officer", asset_or_theme="Gold", bias=Bias.BULLISH,
+                    bias_score=60.0, confidence=80.0, risk_level=RiskLevel.MODERATE),
+        AgentReport(department="Chief Technical Officer", asset_or_theme="Gold", bias=Bias.BULLISH,
+                    bias_score=40.0, confidence=70.0, risk_level=RiskLevel.MODERATE),
+    ]
+    at.run()
+
+    run_buttons = [b for b in at.button if "Run Chief Trade Decision Officer" in b.label]
+    run_buttons[0].click().run()
+    assert not at.exception
+
+    at.radio[0].set_value("long").run()
+    open_buttons = [b for b in at.button if b.label == "Open Trade"]
+    open_buttons[0].click().run()
+    assert not at.exception
+
+    run_buttons = [b for b in at.button if "Run Chief Trade Decision Officer" in b.label]
+    run_buttons[0].click().run()
+    assert not at.exception
+
+    close_buttons = [b for b in at.button if b.label == "Close Trade"]
+    assert len(close_buttons) > 0
+    close_buttons[0].click().run()
+    assert not at.exception

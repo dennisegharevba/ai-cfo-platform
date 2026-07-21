@@ -69,4 +69,49 @@ CREATE INDEX IF NOT EXISTS idx_agent_reports_department ON agent_reports(departm
 CREATE INDEX IF NOT EXISTS idx_agent_reports_asset ON agent_reports(asset_or_theme);
 CREATE INDEX IF NOT EXISTS idx_strategy_reports_asset ON strategy_reports(asset_or_theme);
 CREATE INDEX IF NOT EXISTS idx_outcomes_strategy_report ON outcomes(strategy_report_id);
+
+-- Institutional Trade Decision Engine tables (added alongside the Phase
+-- 1-11 tables above, not replacing them — the Chief Strategy Officer's
+-- overall_market_score pipeline keeps running exactly as before; these
+-- are additive so the Trade Decision Engine can be adopted incrementally).
+
+CREATE TABLE IF NOT EXISTS trade_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_or_theme TEXT NOT NULL,
+    fundamental_score REAL NOT NULL,
+    technical_score REAL NOT NULL,
+    risk_score REAL NOT NULL,
+    overall_score REAL NOT NULL,
+    execution_rating TEXT NOT NULL,
+    trade_grade TEXT NOT NULL,
+    trade_health TEXT NOT NULL,
+    institutional_conviction TEXT NOT NULL DEFAULT '',
+    decision_explanation TEXT NOT NULL,
+    key_catalysts TEXT NOT NULL,
+    key_risks TEXT NOT NULL,
+    contributing_departments TEXT NOT NULL,
+    excluded_departments TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS open_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_or_theme TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    entry_technical_bias_score REAL NOT NULL,
+    entry_fundamental_bias_score REAL NOT NULL,
+    entry_risk_score REAL NOT NULL,
+    entry_market_structure_note TEXT NOT NULL DEFAULT '',
+    stop_loss_level REAL,
+    entry_price REAL,
+    opened_at TEXT NOT NULL,
+    closed_at TEXT,
+    close_reason TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_trade_decisions_asset ON trade_decisions(asset_or_theme);
+CREATE INDEX IF NOT EXISTS idx_trade_decisions_recorded_at ON trade_decisions(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_open_trades_asset ON open_trades(asset_or_theme);
+CREATE INDEX IF NOT EXISTS idx_open_trades_closed_at ON open_trades(closed_at);
 """

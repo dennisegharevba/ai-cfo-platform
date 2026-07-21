@@ -48,8 +48,17 @@ class YahooHistoryConnector(DataSource):
 
         # yfinance returns rows oldest-first with a DatetimeIndex; convert to
         # this platform's newest-first convention.
+        # high/low are included (additive, backward-compatible with any
+        # existing consumer that only reads "close") so ATR and weekend-gap
+        # detection (Institutional Trade Decision Engine, risk score) have
+        # what they need without a second fetch.
         history = [
-            {"date": idx.isoformat(), "close": float(row["Close"])}
+            {
+                "date": idx.isoformat(),
+                "close": float(row["Close"]),
+                "high": float(row["High"]) if "High" in df.columns else float(row["Close"]),
+                "low": float(row["Low"]) if "Low" in df.columns else float(row["Close"]),
+            }
             for idx, row in df.iterrows()
         ]
         history.reverse()

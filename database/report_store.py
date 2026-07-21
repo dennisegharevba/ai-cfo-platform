@@ -25,6 +25,8 @@ from typing import Any, Dict, List, Optional
 
 from models.report import AgentReport
 from models.strategy_report import StrategyReport
+from models.trade_decision import TradeDecision
+from models.open_trade import OpenTrade, TradeDirection
 
 from .schema import SCHEMA_SQL
 
@@ -129,6 +131,109 @@ class ReportStore:
         return cur.lastrowid
 
     # ------------------------------------------------------------------ #
+    # Trade Decision Engine: writes
+    # ------------------------------------------------------------------ #
+    def save_trade_decision(self, decision: TradeDecision) -> int:
+        cur = self._conn.execute(
+            """
+            INSERT INTO trade_decisions
+                (asset_or_theme, fundamental_score, technical_score, risk_score, overall_score,
+                 execution_rating, trade_grade, trade_health, institutional_conviction,
+                 decision_explanation, key_catalysts, key_risks,
+                 contributing_departments, excluded_departments, generated_at, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                decision.asset_or_theme,
+                decision.fundamental_score,
+                decision.technical_score,
+                decision.risk_score,
+                decision.overall_score,
+                decision.execution_rating.value,
+                decision.trade_grade.value,
+                decision.trade_health.value,
+                decision.institutional_conviction,
+                decision.decision_explanation,
+                json.dumps(decision.key_catalysts),
+                json.dumps(decision.key_risks),
+                json.dumps(decision.contributing_departments),
+                json.dumps(decision.excluded_departments),
+                decision.generated_at.isoformat(),
+                _now_iso(),
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def open_trade(self, trade: OpenTrade) -> int:
+        cur = self._conn.execute(
+            """
+            INSERT INTO open_trades
+                (asset_or_theme, direction, entry_technical_bias_score, entry_fundamental_bias_score,
+                 entry_risk_score, entry_market_structure_note, stop_loss_level, entry_price,
+                 opened_at, closed_at, close_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade.asset_or_theme,
+                trade.direction.value,
+                trade.entry_technical_bias_score,
+                trade.entry_fundamental_bias_score,
+                trade.entry_risk_score,
+                trade.entry_market_structure_note,
+                trade.stop_loss_level,
+                trade.entry_price,
+                trade.opened_at.isoformat(),
+                None,
+                "",
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def close_trade(self, trade_id: int, close_reason: str) -> None:
+        self._conn.execute(
+            "UPDATE open_trades SET closed_at = ?, close_reason = ? WHERE id = ?",
+            (_now_iso(), close_reason, trade_id),
+        )
+        self._conn.commit()
+
+    # ------------------------------------------------------------------ #
+    # Trade Decision Engine: reads
+    # ------------------------------------------------------------------ #
+    def get_trade_decisions(self, asset_or_theme: Optional[str] = None, limit: int = 500) -> List[Dict[str, Any]]:
+        """
+        Newest-first. `limit` defaults high (rather than the 100 used
+        elsewhere in this store) because agents/score_momentum.py needs
+        enough history to reliably find a reading near each of the 1h/4h/
+        24h/weekly lookback windows, not just the most recent handful.
+        """
+        query = "SELECT * FROM trade_decisions WHERE 1=1"
+        params: List[Any] = []
+        if asset_or_theme is not None:
+            query += " AND asset_or_theme = ?"
+            params.append(asset_or_theme)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self._conn.execute(query, params).fetchall()
+        return [self._row_to_trade_decision_dict(row) for row in rows]
+
+    def get_open_trade(self, asset_or_theme: str) -> Optional[Dict[str, Any]]:
+        """Most recent still-open trade for this asset, or None."""
+        row = self._conn.execute(
+            "SELECT * FROM open_trades WHERE asset_or_theme = ? AND closed_at IS NULL ORDER BY id DESC LIMIT 1",
+            (asset_or_theme,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_open_trades(self) -> List[Dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM open_trades WHERE closed_at IS NULL ORDER BY opened_at DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------ #
     # Reads
     # ------------------------------------------------------------------ #
     def get_agent_reports(
@@ -184,5 +289,12 @@ class ReportStore:
     def _row_to_strategy_report_dict(row: sqlite3.Row) -> Dict[str, Any]:
         d = dict(row)
         for field in ("catalysts", "risks", "invalidation_notes", "contributing_departments", "excluded_departments"):
+            d[field] = json.loads(d[field])
+        return d
+
+    @staticmethod
+    def _row_to_trade_decision_dict(row: sqlite3.Row) -> Dict[str, Any]:
+        d = dict(row)
+        for field in ("key_catalysts", "key_risks", "contributing_departments", "excluded_departments"):
             d[field] = json.loads(d[field])
         return d

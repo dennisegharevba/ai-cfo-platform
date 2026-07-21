@@ -290,3 +290,32 @@ data integrity, all 12 Chief Officers, a dashboard, and scheduled
 automation. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full history
 and [`docs/ARCHITECTURE_PHASE11.md`](docs/ARCHITECTURE_PHASE11.md) for
 natural next steps beyond the original spec.
+
+## Addition: Institutional Trade Decision Engine
+
+A substantial addition on top of the 11-phase build, from a separate spec.
+Runs alongside the Chief Strategy Officer rather than replacing it — same
+underlying department reports, a different way of using them:
+
+- **Chief Trade Decision Officer** (`agents/chief_trade_decision_officer.py`)
+  keeps Fundamental (40%), Technical (40%), and Risk (20%) scores
+  independently visible throughout, gating any "enter now" recommendation
+  on an 8-point entry-confirmation checklist between them — never on one
+  blended score alone
+- **Asset Risk Officer** — per-asset volatility, ATR-based stop distance,
+  and event/news risk, mirroring the portfolio-level Chief Risk Officer's
+  approach at the single-asset level
+- **Trade Lifecycle Officer** — monitors a user-declared open trade (never
+  one the platform places itself) and rates its ongoing health
+- New dashboard page: **Trade Decision Engine**
+
+One real bug was found and fixed during integration review — a dashboard
+page crash caught by actually executing it with Streamlit's `AppTest`
+harness, not by trusting the accompanying "all tests pass" claim. Full
+account in
+[`docs/ARCHITECTURE_TRADE_DECISION_ENGINE.md`](docs/ARCHITECTURE_TRADE_DECISION_ENGINE.md),
+including honestly-carried-over limitations (no cross-asset correlation
+yet, technical entry-confirmation proxied from existing indicators rather
+than dedicated breakout/volume detectors).
+
+**282 passing tests total.**

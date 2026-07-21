@@ -68,6 +68,44 @@ def bias_badge(bias_value: str) -> str:
     return f"{BIAS_COLORS.get(bias_value, '⚪')} {bias_value.replace('_', ' ').title()}"
 
 
+MOMENTUM_COLORS = {
+    "strengthening": "🟢",
+    "stable": "⚪",
+    "weakening": "🟠",
+    "major_deterioration": "🔴",
+    "insufficient_history": "⚫",
+}
+
+TRADE_HEALTH_COLORS = {
+    "excellent": "🟢",
+    "healthy": "🟢",
+    "weakening": "🟠",
+    "critical": "🔴",
+    "not_open": "⚪",
+}
+
+
+def momentum_badge(momentum_value: str) -> str:
+    return f"{MOMENTUM_COLORS.get(momentum_value, '⚪')} {momentum_value.replace('_', ' ').title()}"
+
+
+def trade_health_badge(trade_health_value: str) -> str:
+    return f"{TRADE_HEALTH_COLORS.get(trade_health_value, '⚪')} {trade_health_value.replace('_', ' ').title()}"
+
+
+def get_report_store() -> ReportStore:
+    """
+    One shared ReportStore per dashboard session, backed by the same
+    on-disk file get_learning_officer() already uses — so trade_decisions
+    and open_trades rows persist across dashboard restarts, and so this
+    store sees the exact same agent_reports/strategy_reports history the
+    rest of the platform is already writing to.
+    """
+    if "report_store" not in st.session_state:
+        st.session_state["report_store"] = ReportStore("ai_cfo_platform.db")
+    return st.session_state["report_store"]
+
+
 def render_agent_report(report) -> None:
     """Render one AgentReport as a compact Streamlit card."""
     col1, col2, col3 = st.columns(3)
