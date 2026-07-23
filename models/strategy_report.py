@@ -34,6 +34,12 @@ class StrategyReport:
     invalidation_notes: List[str] = field(default_factory=list)
     contributing_departments: List[str] = field(default_factory=list)
     excluded_departments: List[str] = field(default_factory=list)
+    # Added alongside the Institutional Relationship Engine upgrade — see
+    # docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md. Both default
+    # to "" so any existing code constructing a StrategyReport without
+    # them keeps working unchanged.
+    execution_readiness: str = ""        # one of agents.institutional_relationship.ExecutionReadiness values
+    institutional_commentary: str = ""   # deterministic "why" paragraph
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -51,5 +57,7 @@ class StrategyReport:
             "invalidation_notes": self.invalidation_notes,
             "contributing_departments": self.contributing_departments,
             "excluded_departments": self.excluded_departments,
+            "execution_readiness": self.execution_readiness,
+            "institutional_commentary": self.institutional_commentary,
             "generated_at": self.generated_at.isoformat(),
         }

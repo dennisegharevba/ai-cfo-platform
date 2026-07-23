@@ -92,6 +92,66 @@ def test_save_and_retrieve_strategy_report():
     assert rows[0]["contributing_departments"] == ["Chief Macro Officer"]
 
 
+def test_execution_readiness_and_institutional_commentary_round_trip():
+    store = ReportStore(":memory:")
+    report = _strategy_report()
+    report.execution_readiness = "high_conviction"
+    report.institutional_commentary = "Test commentary explaining why."
+    store.save_strategy_report(report)
+
+    rows = store.get_strategy_reports()
+    assert rows[0]["execution_readiness"] == "high_conviction"
+    assert rows[0]["institutional_commentary"] == "Test commentary explaining why."
+
+
+def test_migration_adds_new_columns_to_pre_upgrade_database(tmp_path):
+    """
+    Simulates a real database file created BEFORE the Institutional
+    Relationship Engine upgrade (no execution_readiness/institutional_
+    commentary columns), proving ReportStore._migrate() adds them rather
+    than every subsequent insert failing with "no such column".
+    """
+    import sqlite3
+
+    db_path = str(tmp_path / "pre_upgrade.db")
+
+    # Build a strategy_reports table matching the OLD schema (no new columns).
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE strategy_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_or_theme TEXT NOT NULL,
+            overall_market_score REAL NOT NULL,
+            confidence_score REAL NOT NULL,
+            risk_level TEXT NOT NULL,
+            bias TEXT NOT NULL,
+            bias_score REAL NOT NULL,
+            trade_thesis TEXT NOT NULL,
+            investment_committee_summary TEXT NOT NULL,
+            catalysts TEXT NOT NULL,
+            risks TEXT NOT NULL,
+            invalidation_notes TEXT NOT NULL,
+            contributing_departments TEXT NOT NULL,
+            excluded_departments TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            recorded_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    # Opening it via ReportStore should migrate it in place, not error.
+    store = ReportStore(db_path)
+    report_id = store.save_strategy_report(_strategy_report())
+    assert report_id == 1
+
+    rows = store.get_strategy_reports()
+    assert rows[0]["execution_readiness"] == ""  # DEFAULT '' from the migration
+    store.close()
+
+
 def test_record_and_retrieve_outcome():
     store = ReportStore(":memory:")
     strategy_id = store.save_strategy_report(_strategy_report())

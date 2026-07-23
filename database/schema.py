@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS strategy_reports (
     invalidation_notes TEXT NOT NULL,
     contributing_departments TEXT NOT NULL,
     excluded_departments TEXT NOT NULL,
+    execution_readiness TEXT NOT NULL DEFAULT '',
+    institutional_commentary TEXT NOT NULL DEFAULT '',
     generated_at TEXT NOT NULL,
     recorded_at TEXT NOT NULL
 );

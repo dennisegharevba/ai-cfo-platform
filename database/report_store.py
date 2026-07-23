@@ -42,6 +42,30 @@ class ReportStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA_SQL)
         self._conn.commit()
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """
+        `CREATE TABLE IF NOT EXISTS` (in schema.py) only affects brand-new
+        database files — it's a no-op for a strategy_reports table that
+        already existed before the Institutional Relationship Engine
+        upgrade added execution_readiness/institutional_commentary. This
+        adds those columns to any existing on-disk database that predates
+        them, so upgrading the code doesn't break inserts into a database
+        someone's already been running (e.g. a local ai_cfo_platform.db,
+        or the one persisted across scheduled GitHub Actions runs — see
+        docs/ARCHITECTURE_PHASE11.md). SQLite's ADD COLUMN doesn't support
+        an "IF NOT EXISTS" clause, hence the manual existence check.
+        """
+        existing_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(strategy_reports)").fetchall()}
+        migrations = {
+            "execution_readiness": "ALTER TABLE strategy_reports ADD COLUMN execution_readiness TEXT NOT NULL DEFAULT ''",
+            "institutional_commentary": "ALTER TABLE strategy_reports ADD COLUMN institutional_commentary TEXT NOT NULL DEFAULT ''",
+        }
+        for column, statement in migrations.items():
+            if column not in existing_columns:
+                self._conn.execute(statement)
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
@@ -83,8 +107,9 @@ class ReportStore:
                  bias, bias_score, trade_thesis, investment_committee_summary,
                  catalysts, risks, invalidation_notes,
                  contributing_departments, excluded_departments,
+                 execution_readiness, institutional_commentary,
                  generated_at, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 report.asset_or_theme,
@@ -100,6 +125,8 @@ class ReportStore:
                 json.dumps(report.invalidation_notes),
                 json.dumps(report.contributing_departments),
                 json.dumps(report.excluded_departments),
+                report.execution_readiness,
+                report.institutional_commentary,
                 report.generated_at.isoformat(),
                 _now_iso(),
             ),

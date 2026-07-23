@@ -2,7 +2,7 @@ from agents.chief_strategy_officer import ChiefStrategyOfficer
 from models.report import AgentReport, Bias, RiskLevel, bias_from_score
 
 
-def _report(department, bias_score, confidence, risk_level=RiskLevel.MODERATE, catalysts=None, risks=None):
+def _report(department, bias_score, confidence, risk_level=RiskLevel.MODERATE, catalysts=None, risks=None, evidence=None):
     return AgentReport(
         department=department,
         asset_or_theme="TEST",
@@ -12,6 +12,7 @@ def _report(department, bias_score, confidence, risk_level=RiskLevel.MODERATE, c
         risk_level=risk_level,
         catalysts=catalysts or [],
         risks=risks or [],
+        evidence=evidence or [],
     )
 
 
@@ -101,3 +102,53 @@ def test_investment_committee_summary_mentions_key_fields():
     assert "Gold" in result.investment_committee_summary
     assert "Overall Market Score" in result.investment_committee_summary
     assert "Some risk" in result.investment_committee_summary
+
+
+def test_execution_readiness_high_conviction_when_technical_confirms():
+    reports = [
+        _report("Chief Macro Officer", 80, 85, risk_level=RiskLevel.LOW),
+        _report("Chief Technical Officer", 60, 80, risk_level=RiskLevel.LOW),
+    ]
+    result = ChiefStrategyOfficer().synthesize("TEST", reports)
+    assert result.execution_readiness == "high_conviction"
+
+
+def test_execution_readiness_conditional_when_technical_disagrees():
+    reports = [
+        _report("Chief Macro Officer", 85, 90, risk_level=RiskLevel.LOW),
+        _report("Chief Technical Officer", -85, 90, risk_level=RiskLevel.LOW),
+    ]
+    result = ChiefStrategyOfficer().synthesize("TEST", reports)
+    # Macro (weight 1.0) dominates Technical (weight 0.7), so bias stays
+    # bullish overall — but the disagreeing technical read should still
+    # block a "high_conviction" call.
+    assert result.execution_readiness != "high_conviction"
+
+
+def test_execution_readiness_no_trade_when_neutral():
+    reports = [_report("Chief Macro Officer", 5, 80)]
+    result = ChiefStrategyOfficer().synthesize("TEST", reports)
+    assert result.execution_readiness == "no_trade"
+
+
+def test_execution_readiness_no_trade_on_empty_reports():
+    result = ChiefStrategyOfficer().synthesize("TEST", [])
+    assert result.execution_readiness == "no_trade"
+
+
+def test_institutional_commentary_surfaces_alignment_evidence():
+    reports = [
+        _report(
+            "Chief Commodity Analyst", 70, 85, risk_level=RiskLevel.MODERATE,
+            evidence=["Institutional Alignment: commercial and speculative positioning support the same direction, increasing conviction."],
+        ),
+    ]
+    result = ChiefStrategyOfficer().synthesize("Gold", reports)
+    assert "Institutional Alignment" in result.institutional_commentary
+
+
+def test_institutional_commentary_falls_back_when_no_positioning_department():
+    reports = [_report("Chief Macro Officer", 60, 80)]
+    result = ChiefStrategyOfficer().synthesize("TEST", reports)
+    assert "TEST" in result.institutional_commentary
+    assert result.institutional_commentary != ""

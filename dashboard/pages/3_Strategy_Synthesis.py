@@ -13,6 +13,9 @@ import streamlit as st
 
 from dashboard.dashboard_utils import risk_badge, bias_badge
 from agents.chief_strategy_officer import ChiefStrategyOfficer
+from agents.institutional_relationship import (
+    ExecutionReadiness, EXECUTION_READINESS_BADGES, EXECUTION_READINESS_LABELS,
+)
 
 st.set_page_config(page_title="Strategy Synthesis — AI CFO Platform", page_icon="🧭", layout="wide")
 st.title("🧭 Strategy Synthesis")
@@ -44,6 +47,19 @@ else:
         col2.metric("Confidence Score", f"{result.confidence_score:.0f}/100")
         col3.markdown(f"**Risk Level**\n\n{risk_badge(result.risk_level.value)}")
         col4.markdown(f"**Directional Bias**\n\n{bias_badge(result.bias.value)}")
+
+        if result.execution_readiness:
+            try:
+                readiness = ExecutionReadiness(result.execution_readiness)
+                badge = EXECUTION_READINESS_BADGES[readiness]
+                label = EXECUTION_READINESS_LABELS[readiness]
+                st.markdown(f"### Execution Readiness: {badge} {label}")
+            except ValueError:
+                pass  # unrecognized value (e.g. an older stored record) — skip rather than crash
+
+        if result.institutional_commentary:
+            st.subheader("Institutional Commentary")
+            st.markdown(result.institutional_commentary)
 
         st.subheader("Trade Thesis")
         st.markdown(result.trade_thesis)

@@ -16,10 +16,15 @@ rather than only speculative:
       reflects real hedging exposure, often read as a structural
       "smart money" signal
 Both use the same underlying net_position_trend_score function (see
-agents/positioning_scoring.py), just pointed at different fields. When the
-two disagree in direction, that divergence is itself flagged as a risk —
-speculative and commercial positioning pulling opposite ways is a
-classically-watched signal that a trend may be nearing exhaustion.
+agents/positioning_scoring.py), just pointed at different fields.
+
+Updated again to route the relationship between those two signals through
+the Institutional Relationship Engine (agents/institutional_relationship.py)
+rather than a single ad-hoc divergence check: neither commercials nor
+speculators are ever treated as "right" on their own — their agreement or
+disagreement is classified (Full Alignment / Mild Divergence / Strong
+Divergence) and that classification adjusts CONFIDENCE, never the
+direction of the bias score itself, per that module's docstring.
 """
 
 from __future__ import annotations
@@ -31,6 +36,9 @@ from models.report import AgentReport, RiskLevel, bias_from_score
 
 from .base_agent import BaseAgent
 from .positioning_scoring import net_position_trend_score, positioning_extremity_flag
+from .institutional_relationship import (
+    classify_alignment, apply_confidence_adjustment, describe_alignment, AlignmentStatus,
+)
 
 WEIGHT_SPECULATIVE = 60
 WEIGHT_COMMERCIAL = 40
@@ -99,16 +107,19 @@ class PositioningAgent(BaseAgent):
                 elif comm_trend < 0:
                     risks.append("Commercial hedgers reducing net length is a cautionary structural signal")
 
-            if spec_trend is not None and comm_trend is not None:
-                # Same sign and both non-trivial -> agreement; opposite signs
-                # with both non-trivial -> a classic "trend nearing exhaustion"
-                # warning worth surfacing regardless of overall bias direction.
-                if spec_trend * comm_trend < 0 and abs(spec_trend) > 20 and abs(comm_trend) > 20:
+            # --- Institutional Relationship Engine: classify agreement/
+            # disagreement between commercials and speculators, and let
+            # that classification adjust confidence (never the direction). ---
+            alignment_status = classify_alignment(spec_trend, comm_trend)
+            if alignment_status is not None:
+                description = describe_alignment(alignment_status)
+                evidence.append(description["evidence"])
+                if description["risk"]:
+                    risks.append(description["risk"])
+                if description["catalyst"]:
+                    catalysts.append(description["catalyst"])
+                if alignment_status == AlignmentStatus.STRONG_DIVERGENCE:
                     risk_level = RiskLevel.ELEVATED
-                    risks.append(
-                        "Speculative and commercial positioning are diverging — a pattern that "
-                        "often precedes a trend losing momentum"
-                    )
 
             if not component_scores:
                 risks.append("Insufficient COT history to compute a positioning trend")
@@ -125,6 +136,7 @@ class PositioningAgent(BaseAgent):
             total_weight = sum(component_weights)
             bias_score = sum(s * w for s, w in zip(component_scores, component_weights)) / total_weight
             confidence = 40.0 + (30.0 * len(component_scores))  # 40 base, +30 per component (max 100 with both)
+            confidence = apply_confidence_adjustment(confidence, alignment_status)
         else:
             bias_score = 0.0
             confidence = 0.0

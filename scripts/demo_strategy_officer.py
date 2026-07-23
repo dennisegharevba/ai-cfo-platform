@@ -56,6 +56,10 @@ def main():
             "Chief Commodity Analyst", bias_score=70, confidence=70, risk_level=RiskLevel.ELEVATED,
             catalysts=["Building speculative length reflects growing bullish conviction"],
             risks=["Net speculative positioning is a crowded long — vulnerable to a sharp reversal"],
+            evidence=[
+                "Institutional Divergence: long-term value (commercials) and current momentum "
+                "(speculators) disagree moderately.",
+            ],
         ),
         _report(
             "Chief Sentiment Officer", bias_score=40, confidence=55, risk_level=RiskLevel.MODERATE,
@@ -80,9 +84,12 @@ def main():
     print(f"Confidence Score:     {result.confidence_score}/100")
     print(f"Risk Level:           {result.risk_level.value}")
     print(f"Directional Bias:     {result.bias.value} (score {result.bias_score:+.1f})")
+    print(f"Execution Readiness:  {result.execution_readiness}")
     print(f"\nContributing departments: {', '.join(result.contributing_departments)}")
     if result.excluded_departments:
         print(f"Excluded departments:     {', '.join(result.excluded_departments)}")
+
+    print(f"\nInstitutional Commentary:\n  {result.institutional_commentary}")
 
     print(f"\nTrade Thesis:\n  {result.trade_thesis}")
 

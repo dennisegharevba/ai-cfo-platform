@@ -318,4 +318,31 @@ including honestly-carried-over limitations (no cross-asset correlation
 yet, technical entry-confirmation proxied from existing indicators rather
 than dedicated breakout/volume detectors).
 
-**282 passing tests total.**
+## Addition: Institutional Relationship Engine
+
+An upgrade to the Chief Commodity/FX Analyst and Chief Strategy Officer,
+implementing an explicit philosophy: Commercial Hedgers and Large
+Speculators are never forced to "pick a winner." Instead their
+relationship is classified, and that classification adjusts confidence,
+never direction.
+
+- **Alignment classification** (`agents/institutional_relationship.py`) —
+  Full Alignment / Mild Divergence / Strong Divergence between commercial
+  and speculative positioning, each with its own confidence adjustment
+  (+15 / -10 / -25, the exact values from the spec)
+- **Execution Readiness** — four tiers (🟢 High Conviction / 🟡
+  Conditional Opportunity / 🔵 Watchlist / 🔴 No Trade), computed at the
+  Chief Strategy Officer level since it needs to know whether the Chief
+  Technical Officer's own read confirms the synthesized bias
+- **Institutional Commentary** — a deterministic "why" paragraph on every
+  `StrategyReport`, no LLM call, in the spec's own voice
+- A real on-disk-database migration path for the two new `StrategyReport`
+  fields, proven against a database file built with the exact pre-upgrade
+  schema
+
+Full account, including what the spec asked for that's honestly NOT
+built (adaptive/self-learning weights and thresholds — a real backtesting
+system of its own, not a natural extension of what's here), in
+[`docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md`](docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md).
+
+**318 passing tests total.**

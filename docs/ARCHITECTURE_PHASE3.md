@@ -122,3 +122,11 @@ the same history, agreement between the two boosting confidence to 100
 (40 base + 30 per component), the divergence flag firing correctly, and
 the pre-existing speculative-only behavior still working unchanged when no
 commercial data is present in a payload.
+
+## Further update: see docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md
+
+The ad-hoc divergence check described above was later replaced with a
+proper three-state classification (Full Alignment / Mild Divergence /
+Strong Divergence) plus an adaptive confidence adjustment and an
+Execution Readiness tier computed at the Chief Strategy Officer level —
+see that document for the full design.

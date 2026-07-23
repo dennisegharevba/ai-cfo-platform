@@ -33,6 +33,7 @@ from models.report import AgentReport, Bias, RiskLevel, bias_from_score
 from models.strategy_report import StrategyReport
 
 from .risk_severity import worst_of
+from .institutional_relationship import classify_execution_readiness, build_institutional_commentary
 
 # Default per-department weights. Departments not listed default to 1.0.
 # Sentiment/technical are weighted a bit below the fundamental desks by
@@ -104,6 +105,7 @@ class ChiefStrategyOfficer:
         confidences: List[float] = []
         all_catalysts: List[str] = []
         all_risks: List[str] = []
+        all_evidence: List[str] = []
         risk_levels: List[RiskLevel] = []
 
         for report in reports:
@@ -118,6 +120,7 @@ class ChiefStrategyOfficer:
                 excluded.append(report.department)
             all_catalysts.extend(report.catalysts)
             all_risks.extend(report.risks)
+            all_evidence.extend(report.evidence)
 
         if risk_report is not None:
             risk_levels.append(risk_report.risk_level)
@@ -157,6 +160,25 @@ class ChiefStrategyOfficer:
             contributing, excluded, catalysts, risks,
         )
 
+        # --- Execution readiness & institutional commentary ---
+        # technical_confirms answers "does the Chief Technical Officer's own
+        # read point the same direction as the synthesized bias" — only the
+        # Strategy Officer can answer this, since it's the only place that
+        # sees both the overall bias AND each individual department's read.
+        # See docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md.
+        technical_report = next((r for r in reports if r.department == "Chief Technical Officer"), None)
+        technical_confirms = None
+        if technical_report is not None and technical_report.department in contributing:
+            if overall_bias_score != 0 and technical_report.bias_score != 0:
+                technical_confirms = (technical_report.bias_score > 0) == (overall_bias_score > 0)
+
+        execution_readiness = classify_execution_readiness(
+            bias, confidence_score, risk_level, technical_confirms,
+        )
+        institutional_commentary = build_institutional_commentary(
+            asset_or_theme, bias, confidence_score, execution_readiness, evidence=all_evidence, risks=risks,
+        )
+
         return StrategyReport(
             asset_or_theme=asset_or_theme,
             overall_market_score=round(overall_market_score, 1),
@@ -171,6 +193,8 @@ class ChiefStrategyOfficer:
             invalidation_notes=invalidation_notes,
             contributing_departments=contributing,
             excluded_departments=excluded,
+            execution_readiness=execution_readiness.value,
+            institutional_commentary=institutional_commentary,
         )
 
     def _build_trade_thesis(

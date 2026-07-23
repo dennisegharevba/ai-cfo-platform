@@ -63,7 +63,34 @@ def test_strategy_synthesis_with_empty_pool_shows_info_not_crash():
     at = AppTest.from_file("dashboard/pages/3_Strategy_Synthesis.py", default_timeout=30)
     at.run()
     assert not at.exception
-    assert len(at.info) >= 1  # "no reports yet" message, not a crash
+    assert len(at.info) >= 1
+
+
+def test_strategy_synthesis_run_button_renders_execution_readiness_and_commentary():
+    """
+    Exercises the actual 'Run Chief Strategy Officer' click and the new
+    Execution Readiness / Institutional Commentary render path added
+    alongside the Institutional Relationship Engine upgrade — the same
+    class of bug (an untested render path) that a NameError was found in
+    on the Trade Decision Engine page gets caught here before it ships.
+    """
+    from models.report import AgentReport, Bias, RiskLevel
+
+    at = AppTest.from_file("dashboard/pages/3_Strategy_Synthesis.py", default_timeout=30)
+    at.run()
+    at.session_state["last_agent_reports"] = [
+        AgentReport(department="Chief Macro Officer", asset_or_theme="Gold", bias=Bias.BULLISH,
+                    bias_score=60.0, confidence=80.0, risk_level=RiskLevel.MODERATE),
+    ]
+    at.run()
+
+    run_buttons = [b for b in at.button if "Run Chief Strategy Officer" in b.label]
+    assert len(run_buttons) == 1
+    run_buttons[0].click().run()
+    assert not at.exception
+
+    markdown_text = " ".join(m.value for m in at.markdown)
+    assert "Execution Readiness" in markdown_text  # "no reports yet" message, not a crash
 
 
 def test_alerts_execution_with_no_strategy_report_shows_info_not_crash():
