@@ -16,11 +16,14 @@ Three concepts live here, used by two different agents:
       Analyst), where commercial vs. speculative agreement/disagreement
       is computed.
     - ExecutionReadiness / classify_execution_readiness — used by
-      agents/chief_strategy_officer.py, since "is technical confirmation
-      present" is a cross-department question the Strategy Officer is
-      already positioned to answer (it already sees every department's
-      report), not something a single positioning agent can determine on
-      its own.
+      agents/chief_strategy_officer.py to classify how ready a synthesized
+      bias is to act on, based on confidence and risk. Originally also
+      gated on whether a Chief Technical Officer report confirmed the
+      bias; that department was later removed from the platform's main
+      scoring pipeline entirely (the platform now scores purely on
+      fundamentals, macro, and global news/sentiment — see
+      docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md), so this no longer
+      depends on any technical signal.
     - build_institutional_commentary — a plain deterministic string
       builder (no LLM), consistent with the rest of this platform's
       preference for auditable, reproducible text over generated prose.
@@ -132,8 +135,8 @@ def describe_alignment(status: AlignmentStatus) -> dict:
                 "(speculators) disagree moderately."
             ),
             "risk": (
-                "Mild institutional divergence — require stronger technical confirmation before "
-                "committing capital; this does not by itself invalidate the trade"
+                "Mild institutional divergence — require stronger confirming evidence from other "
+                "departments before committing capital; this does not by itself invalidate the trade"
             ),
             "catalyst": None,
         }
@@ -144,8 +147,8 @@ def describe_alignment(status: AlignmentStatus) -> dict:
             "divergence — structural value and current participation are conflicting significantly."
         ),
         "risk": (
-            "Strong institutional divergence — increase caution, require exceptional technical "
-            "confirmation and a higher reward-to-risk, and reduce preferred position size; absent "
+            "Strong institutional divergence — increase caution, require exceptional confirming "
+            "evidence and a higher reward-to-risk, and reduce preferred position size; absent "
             "strong confirmation, this favors No Trade"
         ),
         "catalyst": None,
@@ -187,17 +190,17 @@ def classify_execution_readiness(
     bias: Bias,
     confidence_score: float,
     risk_level: RiskLevel,
-    technical_confirms: Optional[bool],
 ) -> ExecutionReadiness:
     """
     Per the spec: classify readiness rather than just bias direction.
 
-    technical_confirms: True if a Chief Technical Officer report
-    contributed to the synthesis AND its bias points the same direction as
-    the overall bias; False if it contributed but disagrees; None if no
-    technical department contributed this cycle (computed by
-    ChiefStrategyOfficer.synthesize(), which is the only place that can
-    see both the overall bias and each department's individual read).
+    Originally gated HIGH_CONVICTION on a Chief Technical Officer
+    confirmation signal. That department was later removed from the
+    platform's main scoring pipeline entirely (per user request — the
+    platform now scores purely on fundamentals, macro, and global
+    news/sentiment; see docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md),
+    so readiness is now judged on confidence and risk alone, with no
+    technical-confirmation gate.
 
     This is a deterministic decision table, not a scored/weighted formula
     — readiness is meant to be an easily-audited classification, matching
@@ -211,11 +214,7 @@ def classify_execution_readiness(
         # with otherwise-strong confidence — never High Conviction.
         return ExecutionReadiness.CONDITIONAL_OPPORTUNITY if confidence_score >= CONDITIONAL_MIN_CONFIDENCE else ExecutionReadiness.NO_TRADE
 
-    if (
-        confidence_score >= HIGH_CONVICTION_MIN_CONFIDENCE
-        and risk_level in (RiskLevel.LOW, RiskLevel.MODERATE)
-        and technical_confirms is True
-    ):
+    if confidence_score >= HIGH_CONVICTION_MIN_CONFIDENCE and risk_level in (RiskLevel.LOW, RiskLevel.MODERATE):
         return ExecutionReadiness.HIGH_CONVICTION
 
     if confidence_score >= CONDITIONAL_MIN_CONFIDENCE:
@@ -264,9 +263,9 @@ def build_institutional_commentary(
         opening = f"{asset_or_theme} shows a {direction} bias at {confidence_score:.0f}/100 confidence."
 
     closing = {
-        ExecutionReadiness.HIGH_CONVICTION: "Suitable for technical execution if the chart confirms.",
+        ExecutionReadiness.HIGH_CONVICTION: "Fundamentals, macro, and sentiment are aligned with sufficient confidence to act on.",
         ExecutionReadiness.CONDITIONAL_OPPORTUNITY: (
-            "Fundamental bias is present, but technical confirmation is required before capital should be committed."
+            "A fundamental bias is present, but confidence or risk conditions call for caution before capital is committed."
         ),
         ExecutionReadiness.WATCHLIST: "A directional edge may exist, but evidence remains incomplete — continue monitoring.",
         ExecutionReadiness.NO_TRADE: "Evidence is insufficient or risk is excessive; capital preservation is preferred.",

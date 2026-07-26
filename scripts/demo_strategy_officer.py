@@ -8,10 +8,17 @@ demonstrate ITS logic is with a set of illustrative example reports
 representing a plausible real scenario, not live network calls.
 
 This demo deliberately constructs a scenario where departments DISAGREE
-(strong fundamental bulls, a cautious technical read, and a risk desk
-flagging elevated portfolio risk) to show the disagreement-resolution math
-actually doing something, rather than a scenario where everyone agrees and
-the synthesis is trivial.
+(a strongly bullish macro/commodity/sentiment picture against a more
+cautious FX read, plus a risk desk flagging elevated portfolio risk) to
+show the disagreement-resolution math actually doing something, rather
+than a scenario where everyone agrees and the synthesis is trivial.
+
+Note: this demo previously included an illustrative "Chief Technical
+Officer" example report. That department was later fully removed from the
+platform's main scoring pipeline per user request — the platform now
+scores purely on fundamentals, macro, and global news/sentiment — so this
+demo's example roster was updated to match. See
+docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md.
 
 Run:
     python scripts/demo_strategy_officer.py
@@ -44,8 +51,8 @@ def main():
     print("\n=== AI CFO Platform — Phase 7: Chief Strategy Officer demo ===")
     print("(Illustrative example department reports — see docs/ARCHITECTURE_PHASE7.md)\n")
 
-    # A deliberately mixed picture: fundamentals bullish, technicals cautious,
-    # and the risk desk flagging a crowded/volatile setup.
+    # A deliberately mixed picture: macro/commodity/sentiment bullish,
+    # FX more cautious, and the risk desk flagging a crowded/volatile setup.
     reports = [
         _report(
             "Chief Macro Officer", bias_score=55, confidence=75, risk_level=RiskLevel.MODERATE,
@@ -66,9 +73,9 @@ def main():
             catalysts=["Prevailing news flow is constructive"],
         ),
         _report(
-            "Chief Technical Officer", bias_score=-30, confidence=65, risk_level=RiskLevel.ELEVATED,
-            risks=["RSI(74.2) is overbought — vulnerable to a pullback"],
-            evidence=["RSI(14) is 74.2", "Price structure shows an uptrend (20 SMA vs 50 SMA)"],
+            "Chief FX Analyst", bias_score=-30, confidence=65, risk_level=RiskLevel.MODERATE,
+            risks=["USD strength headwind from diverging rate expectations"],
+            evidence=["Speculators have been reducing length / building shorts over the last 8 COT reports"],
         ),
     ]
 

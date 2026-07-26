@@ -43,7 +43,6 @@ from config.watchlist import WATCHLIST_DAILY, WATCHLIST_WEEKLY
 
 from connectors.fred_connector import FredConnector
 from connectors.cot_connector import CotConnector
-from connectors.yahoo_history_connector import YahooHistoryConnector
 from connectors.sec_edgar_connector import SecEdgarConnector
 from connectors.sec_ticker_lookup import resolve_cik
 from connectors.binance_connector import BinanceFuturesConnector
@@ -57,7 +56,6 @@ from agents.chief_fx_analyst import ChiefFXAnalyst
 from agents.chief_equity_analyst import ChiefEquityAnalyst
 from agents.chief_cryptocurrency_analyst import ChiefCryptocurrencyAnalyst
 from agents.chief_sentiment_officer import ChiefSentimentOfficer
-from agents.chief_technical_officer import ChiefTechnicalOfficer
 from agents.chief_strategy_officer import ChiefStrategyOfficer
 from agents.chief_learning_officer import ChiefLearningOfficer
 from agents.chief_execution_officer import ChiefExecutionOfficer
@@ -143,13 +141,6 @@ def _run_sentiment(manager: DataIntegrityManager, asset: str, params: dict):
     return ChiefSentimentOfficer(manager, news_key=key, min_quality=MIN_DATA_QUALITY).analyze(asset)
 
 
-def _run_technical(manager: DataIntegrityManager, asset: str, params: dict):
-    key = f"PRICE_HISTORY_{params['ticker']}"
-    if not manager.is_registered(key):
-        manager.register(key, primary=YahooHistoryConnector(params["ticker"], period="6mo", interval="1d"))
-    return ChiefTechnicalOfficer(manager, price_key=key, min_quality=MIN_DATA_QUALITY).analyze(asset)
-
-
 DEPARTMENT_RUNNERS = {
     "macro": _run_macro,
     "bond": _run_bond,
@@ -158,7 +149,6 @@ DEPARTMENT_RUNNERS = {
     "equity": _run_equity,
     "crypto": _run_crypto,
     "sentiment": _run_sentiment,
-    "technical": _run_technical,
 }
 
 

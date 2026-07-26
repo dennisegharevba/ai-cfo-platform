@@ -9,9 +9,12 @@ research, probability-based directional bias, and gated alerts (Telegram +
 dashboard) for a human to act on.
 
 Built in fully working, tested, documented phases. All 11 phases on the
-original roadmap are now complete — all 12 Chief Officers, a dashboard,
-and scheduled automation. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
-full history.
+original roadmap are complete. The platform's main scoring pipeline now
+runs 11 active Chief Officers (Chief Technical Officer was later fully
+removed per user request — the platform now scores purely on
+fundamentals, macro, and global news/sentiment; see
+[`docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md`](docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md)).
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full history.
 
 ## Phase 1: Data Integrity & Refresh Manager
 
@@ -78,17 +81,21 @@ See [`docs/ARCHITECTURE_PHASE3.md`](docs/ARCHITECTURE_PHASE3.md) for the full de
 
 See [`docs/ARCHITECTURE_PHASE4.md`](docs/ARCHITECTURE_PHASE4.md) for the full design.
 
-## Phase 5 (current): Chief Sentiment Officer + Chief Technical Officer
+## Phase 5: Chief Sentiment Officer (originally + Chief Technical Officer)
 
-- Chief Technical Officer: RSI (20%) + MACD histogram (40%) + SMA(20/50)
-  trend (40%) per ticker, via a new free Yahoo Finance history connector;
-  flags overbought/oversold RSI as elevated risk
 - Chief Sentiment Officer: free news-RSS headline sentiment (keyword-based,
   fully explainable — no ML black box), optionally blended with the same
   CFTC COT dataset a Chief Commodity/FX Analyst already reads, reinterpreted
   as a crowd-sentiment signal
-- New pure-Python `agents/technical_indicators.py` (RSI/MACD/SMA — no
-  numpy/pandas indicator libraries, every formula inspectable)
+
+**Chief Technical Officer** (RSI/MACD/SMA-based) was originally built here
+too, but was later **fully removed** from the platform's main scoring
+pipeline per user request — the platform now scores purely on
+fundamentals, macro, and global news/sentiment. See
+[`docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md`](docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md).
+The separate Trade Decision Engine (below) still has its own independent
+technical/momentum logic by explicit user choice — it never depended on
+this department's code.
 
 See [`docs/ARCHITECTURE_PHASE5.md`](docs/ARCHITECTURE_PHASE5.md) for the full design.
 
@@ -154,7 +161,7 @@ method at all.
 
 See [`docs/ARCHITECTURE_PHASE8.md`](docs/ARCHITECTURE_PHASE8.md) for the full design.
 
-## Phase 9 (current): Chief Execution Officer — all 12 Chief Officers now built
+## Phase 9: Chief Execution Officer — the twelfth and final officer from the original spec
 
 The final officer, and a gate rather than an analyst.
 
@@ -241,7 +248,7 @@ python scripts/demo_refresh.py
 python scripts/demo_agents.py
 python scripts/demo_commodity_fx_agents.py
 python scripts/demo_equity_crypto_agents.py
-python scripts/demo_sentiment_technical_agents.py
+python scripts/demo_sentiment_agent.py
 python scripts/demo_risk_officer.py
 python scripts/demo_strategy_officer.py
 python scripts/demo_learning_officer.py
@@ -270,14 +277,16 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) and
 ```
 core/          Data Integrity & Refresh Manager (Phase 1 — built)
 connectors/    FRED, CFTC COT, Yahoo (quote + history), SEC EDGAR, Binance, News RSS
-agents/        All 12 Chief Officers + BaseAgent/PortfolioAgent patterns (Phases 2-9 — complete)
+agents/        11 active Chief Officers + BaseAgent/PortfolioAgent patterns
+               (Chief Technical Officer was later removed — see
+               docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md)
 models/        AgentReport, Portfolio, Position, StrategyReport, ExecutionDecision
 database/      SQLite persistence: report_store.py, schema.py (Phase 8 — built)
 telegram/      TelegramAlerter — free Bot API wrapper (Phase 9 — built)
 dashboard/     Multi-page Streamlit app: Home.py + pages/ (Phase 10 — built)
 config/        Settings, refresh intervals, watchlist.py (Phase 11 — built)
-tests/         244 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
-scripts/       demo_*.py (Phases 1-9) + run_daily_cycle.py (Phase 11 — the production entry point)
+tests/         311 passing tests, network-independent (fake sources, mocked HTTP, AppTest)
+scripts/       demo_*.py + run_daily_cycle.py (the production entry point)
 docs/          Architecture (Phases 1-11), installation, configuration, roadmap
 data/          Reserved: local caches/fixtures (not needed yet)
 utils/         Shared logging setup
@@ -286,7 +295,7 @@ utils/         Shared logging setup
 ## This project is now complete
 
 All 11 phases on the original roadmap are built, tested, and documented:
-data integrity, all 12 Chief Officers, a dashboard, and scheduled
+data integrity, the Chief Officer departments, a dashboard, and scheduled
 automation. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full history
 and [`docs/ARCHITECTURE_PHASE11.md`](docs/ARCHITECTURE_PHASE11.md) for
 natural next steps beyond the original spec.
@@ -346,3 +355,25 @@ system of its own, not a natural extension of what's here), in
 [`docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md`](docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md).
 
 **318 passing tests total.**
+
+## Update: Chief Technical Officer removed
+
+Per explicit user request, Chief Technical Officer was **fully deleted**
+(code and tests, not just disabled) from the platform's main scoring
+pipeline. The main research pipeline (Chief Strategy Officer's synthesis)
+now scores purely on fundamentals, macro, and global news/sentiment — no
+technical/price-action department is part of it anymore.
+`classify_execution_readiness()` no longer gates its High Conviction tier
+on a technical confirmation signal, since none exists to provide one.
+
+The separate Trade Decision Engine (above) was deliberately **left
+unchanged** — by explicit user choice, it keeps its own independent
+Fundamental/Technical/Risk scoring for trade entry timing, which never
+depended on the deleted `ChiefTechnicalOfficer` class in the first place
+(verified by checking every import before deleting anything).
+
+Full account in
+[`docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md`](docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md).
+
+**311 passing tests total** (down from 318 — the dedicated test file for
+the now-deleted agent was removed along with it).

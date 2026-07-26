@@ -18,7 +18,6 @@ from config.settings import FRED_API_KEY, SEC_USER_AGENT, MIN_DATA_QUALITY, NEWS
 
 from connectors.fred_connector import FredConnector
 from connectors.cot_connector import CotConnector
-from connectors.yahoo_history_connector import YahooHistoryConnector
 from connectors.sec_edgar_connector import SecEdgarConnector
 from connectors.sec_ticker_lookup import resolve_cik
 from connectors.binance_connector import BinanceFuturesConnector
@@ -31,7 +30,6 @@ from agents.chief_fx_analyst import ChiefFXAnalyst
 from agents.chief_equity_analyst import ChiefEquityAnalyst
 from agents.chief_cryptocurrency_analyst import ChiefCryptocurrencyAnalyst
 from agents.chief_sentiment_officer import ChiefSentimentOfficer
-from agents.chief_technical_officer import ChiefTechnicalOfficer
 
 st.set_page_config(page_title="Department Reports — AI CFO Platform", page_icon="🏛️", layout="wide")
 st.title("🏛️ Department Reports")
@@ -50,7 +48,6 @@ DEPARTMENTS = [
     "Chief Equity Analyst",
     "Chief Cryptocurrency Analyst",
     "Chief Sentiment Officer",
-    "Chief Technical Officer",
 ]
 
 department = st.selectbox("Department", DEPARTMENTS)
@@ -121,14 +118,6 @@ elif department == "Chief Sentiment Officer":
         if not manager.is_registered(key):
             manager.register(key, primary=NewsRssConnector(NEWS_RSS_URL))
         report = ChiefSentimentOfficer(manager, news_key=key, min_quality=MIN_DATA_QUALITY).analyze("Broad Market Sentiment")
-
-elif department == "Chief Technical Officer":
-    ticker = st.text_input("Ticker", value="SPY")
-    if st.button("Run Chief Technical Officer", type="primary"):
-        key = f"PRICE_HISTORY_{ticker}"
-        if not manager.is_registered(key):
-            manager.register(key, primary=YahooHistoryConnector(ticker, period="6mo", interval="1d"))
-        report = ChiefTechnicalOfficer(manager, price_key=key, min_quality=MIN_DATA_QUALITY).analyze(ticker)
 
 if report is not None:
     st.session_state["last_agent_reports"].append(report)

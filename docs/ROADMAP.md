@@ -37,6 +37,11 @@ starts, per the project's delivery principle.
       positioning-scoring functions. 39 new tests (132 total),
       `scripts/demo_sentiment_technical_agents.py`. See
       `docs/ARCHITECTURE_PHASE5.md`.
+      **Later update:** Chief Technical Officer was fully deleted from the
+      platform's main scoring pipeline per user request — see
+      `docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md`. The demo script
+      above was replaced by `scripts/demo_sentiment_agent.py` (Sentiment
+      only).
 - [x] **Phase 6 — Chief Risk Officer** (this delivery)
       A genuine architectural branch point: new `PortfolioAgent` base class
       (`agents/portfolio_agent_base.py`) for agents that analyze a whole

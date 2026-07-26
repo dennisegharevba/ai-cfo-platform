@@ -57,10 +57,12 @@ def evaluate_lifecycle(
                 f"Technical trend has moved {adverse_delta:+.1f} points against the {open_trade.direction.value} thesis"
             )
 
-    # 4. Has market structure failed? — proxied via technical risk_level
-    # flipping to HIGH (this phase's Technical Officer doesn't yet emit an
-    # explicit BOS/CHoCH event — see agents/chief_technical_officer.py's
-    # docstring on planned coverage; documented simplification, not hidden).
+    # 4. Has market structure failed? — proxied via the technical report's
+    # risk_level flipping to HIGH (this doesn't yet emit an explicit
+    # BOS/CHoCH event; documented simplification, not hidden). Note: this
+    # technical_report comes from the Trade Decision Engine's own
+    # score_momentum.py, independent of the (now-removed) Chief Technical
+    # Officer department — see docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md.
     if technical_report is not None and technical_report.risk_level == RiskLevel.HIGH:
         reasons.append("Technical risk level has escalated to HIGH — market structure may be failing")
 

@@ -93,3 +93,15 @@ unreachable. Run it anywhere with normal internet access for real output.
 - Any persistence, alerting, or dashboard surfacing of these reports
 - The actual fundamental-vs-technical reconciliation the spec describes —
   that's the Chief Strategy Officer's job (Phase 7)
+
+## Later update: Chief Technical Officer removed
+
+Per explicit user request, Chief Technical Officer was later **fully
+deleted** from the platform's main scoring pipeline — the platform now
+scores purely on fundamentals, macro, and global news/sentiment. See
+`docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md` for the full account of
+what was deleted, what was changed, and why the separate Trade Decision
+Engine's own technical/momentum logic was deliberately kept as-is (it
+never depended on this department's code in the first place). This
+document is left as the historical record of what Phase 5 originally
+built, not rewritten to pretend Chief Technical Officer was never here.

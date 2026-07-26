@@ -34,10 +34,10 @@ def test_consensus_bullish_departments_yields_bullish_high_confidence():
 def test_conflicting_departments_reduce_confidence_and_pull_toward_neutral():
     reports = [
         _report("Chief Macro Officer", 90, 90),
-        _report("Chief Technical Officer", -90, 90),
+        _report("Chief Sentiment Officer", -90, 90),
     ]
     result = ChiefStrategyOfficer().synthesize("TEST", reports)
-    # Technical is weighted 0.7 vs macro's 1.0, so it won't be perfectly neutral,
+    # Sentiment is weighted 0.7 vs macro's 1.0, so it won't be perfectly neutral,
     # but should be pulled well away from either extreme and confidence should
     # take a real disagreement penalty.
     assert abs(result.bias_score) < 50
@@ -56,15 +56,23 @@ def test_zero_confidence_report_excluded_from_synthesis():
     assert result.bias_score > 0  # driven entirely by the one usable report
 
 
-def test_sentiment_and_technical_weighted_lower_by_default():
+def test_sentiment_weighted_lower_by_default():
     officer = ChiefStrategyOfficer()
     assert officer._weight_for("Chief Sentiment Officer") < officer._weight_for("Chief Macro Officer")
-    assert officer._weight_for("Chief Technical Officer") < officer._weight_for("Chief Macro Officer")
+
+
+def test_unlisted_department_falls_back_to_weight_one():
+    # Chief Technical Officer was removed from the platform's main scoring
+    # pipeline (per user request) — it no longer has a default weight
+    # entry, so any department not explicitly listed just gets 1.0.
+    officer = ChiefStrategyOfficer()
+    assert officer._weight_for("Chief Technical Officer") == 1.0
+    assert officer._weight_for("Some Made Up Department") == 1.0
 
 
 def test_custom_department_weights_override_defaults():
-    officer = ChiefStrategyOfficer(department_weights={"Chief Technical Officer": 1.5})
-    assert officer._weight_for("Chief Technical Officer") == 1.5
+    officer = ChiefStrategyOfficer(department_weights={"Chief Sentiment Officer": 1.5})
+    assert officer._weight_for("Chief Sentiment Officer") == 1.5
 
 
 def test_risk_report_excluded_from_bias_but_escalates_risk_level():
@@ -104,24 +112,23 @@ def test_investment_committee_summary_mentions_key_fields():
     assert "Some risk" in result.investment_committee_summary
 
 
-def test_execution_readiness_high_conviction_when_technical_confirms():
-    reports = [
-        _report("Chief Macro Officer", 80, 85, risk_level=RiskLevel.LOW),
-        _report("Chief Technical Officer", 60, 80, risk_level=RiskLevel.LOW),
-    ]
+def test_execution_readiness_high_conviction_from_strong_single_department():
+    # No technical-confirmation gate anymore — Chief Technical Officer was
+    # removed from the platform's main scoring pipeline (per user request).
+    # A single strong, confident, low-risk fundamental report is enough.
+    reports = [_report("Chief Macro Officer", 80, 85, risk_level=RiskLevel.LOW)]
     result = ChiefStrategyOfficer().synthesize("TEST", reports)
     assert result.execution_readiness == "high_conviction"
 
 
-def test_execution_readiness_conditional_when_technical_disagrees():
+def test_execution_readiness_degrades_when_departments_disagree():
     reports = [
         _report("Chief Macro Officer", 85, 90, risk_level=RiskLevel.LOW),
-        _report("Chief Technical Officer", -85, 90, risk_level=RiskLevel.LOW),
+        _report("Chief Sentiment Officer", -85, 90, risk_level=RiskLevel.LOW),
     ]
     result = ChiefStrategyOfficer().synthesize("TEST", reports)
-    # Macro (weight 1.0) dominates Technical (weight 0.7), so bias stays
-    # bullish overall — but the disagreeing technical read should still
-    # block a "high_conviction" call.
+    # The disagreement penalty should pull confidence below the High
+    # Conviction bar even though both individual reports were confident.
     assert result.execution_readiness != "high_conviction"
 
 

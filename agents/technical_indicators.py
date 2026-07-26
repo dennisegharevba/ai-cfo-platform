@@ -1,12 +1,22 @@
 """
-Technical indicator math for the Chief Technical Officer.
+Technical indicator math.
+
+Originally written for the Chief Technical Officer, which was later
+removed from the platform's main scoring pipeline entirely per user
+request (the platform now scores purely on fundamentals, macro, and
+global news/sentiment — see
+docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md). This module's functions
+are still used by the separate Trade Decision Engine
+(agents/score_momentum.py, agents/asset_risk_officer.py's ATR-based stop
+distance), which is a different feature with a different purpose and was
+deliberately kept as-is.
 
 Deliberately implemented in pure Python (no numpy/pandas indicator
 libraries) so every step is inspectable and matches textbook formulas
 exactly — institutional research needs to be able to point at the formula,
 not a library version. Closing prices are expected OLDEST-FIRST (standard
 for time-series math), unlike this platform's connector convention of
-newest-first history — see agents/chief_technical_officer.py for the
+newest-first history — see agents/asset_risk_officer.py for the
 list-reversal step that bridges the two.
 """
 

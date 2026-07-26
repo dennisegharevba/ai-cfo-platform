@@ -1,25 +1,28 @@
 """
-agents/ — the Chief Officer analytical agents. All 12 are now built.
+agents/ — the Chief Officer analytical agents.
 
 Phase 2: Chief Macro Officer, Chief Bond Strategist.
 Phase 3: Chief Commodity Analyst, Chief FX Analyst.
 Phase 4: Chief Equity Analyst, Chief Cryptocurrency Analyst.
-Phase 5: Chief Sentiment Officer, Chief Technical Officer.
+Phase 5: Chief Sentiment Officer, (Chief Technical Officer — later removed
+from the main scoring pipeline per user request; see
+docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md. The platform now scores
+purely on fundamentals + macro + global news/sentiment. Its own separate
+momentum/technical logic inside the Trade Decision Engine, which is a
+different feature with a different purpose, was deliberately kept as-is.)
 Phase 6: Chief Risk Officer.
 Phase 7: Chief Strategy Officer.
 Phase 8: Chief Learning Officer.
-Phase 9 (this delivery): Chief Execution Officer.
+Phase 9: Chief Execution Officer.
 
 Four architectural shapes exist:
-- BaseAgent: single-asset agents that fetch data via DataIntegrityManager
-  (Phases 2-5).
+- BaseAgent: single-asset agents that fetch data via DataIntegrityManager.
 - PortfolioAgent: agents that analyze a whole Portfolio of positions,
-  same data-integrity contract, keyed by symbol (Phase 6).
+  same data-integrity contract, keyed by symbol (Chief Risk Officer).
 - ChiefStrategyOfficer / ChiefExecutionOfficer: fetch NO data themselves —
-  pure synthesis/gating over reports other agents already produced
-  (Phases 7 & 9).
+  pure synthesis/gating over reports other agents already produced.
 - ChiefLearningOfficer: not an analyst at all — a persistence sink and
-  performance-analytics query engine (Phase 8).
+  performance-analytics query engine.
 
 See docs/ARCHITECTURE.md and the per-phase docs/ARCHITECTURE_PHASE*.md
 files for the full patterns.
@@ -34,7 +37,6 @@ from .chief_fx_analyst import ChiefFXAnalyst
 from .chief_equity_analyst import ChiefEquityAnalyst
 from .chief_cryptocurrency_analyst import ChiefCryptocurrencyAnalyst
 from .chief_sentiment_officer import ChiefSentimentOfficer
-from .chief_technical_officer import ChiefTechnicalOfficer
 from .portfolio_agent_base import PortfolioAgent
 from .chief_risk_officer import ChiefRiskOfficer
 from .chief_strategy_officer import ChiefStrategyOfficer
@@ -51,7 +53,6 @@ __all__ = [
     "ChiefEquityAnalyst",
     "ChiefCryptocurrencyAnalyst",
     "ChiefSentimentOfficer",
-    "ChiefTechnicalOfficer",
     "PortfolioAgent",
     "ChiefRiskOfficer",
     "ChiefStrategyOfficer",

@@ -76,7 +76,6 @@ WATCHLIST_WEEKLY = [
         "asset_or_theme": ticker,
         "departments": {
             "equity": {},
-            "technical": {"ticker": ticker},
         },
     }
     for ticker in LARGE_CAP_TICKERS

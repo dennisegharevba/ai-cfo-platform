@@ -4,7 +4,7 @@ Chief Strategy Officer.
 Architecturally distinct from every prior agent: it is NOT a BaseAgent or a
 PortfolioAgent, because it doesn't fetch any data through the
 DataIntegrityManager at all. Its entire job is to consume AgentReports that
-OTHER agents already produced (Chief Macro Officer, Chief Technical
+OTHER agents already produced (Chief Macro Officer, Chief Sentiment
 Officer, etc.) and synthesize them — this is the layer where the platform's
 "different departments can disagree with each other" design finally
 matters, and where that disagreement gets resolved into one number rather
@@ -36,13 +36,15 @@ from .risk_severity import worst_of
 from .institutional_relationship import classify_execution_readiness, build_institutional_commentary
 
 # Default per-department weights. Departments not listed default to 1.0.
-# Sentiment/technical are weighted a bit below the fundamental desks by
-# default (configurable per instance) — a common institutional convention
-# of treating fundamentals as the primary driver and technicals/sentiment
-# as confirming/timing signals, not the other way around.
+# Sentiment is weighted a bit below the fundamental desks by default
+# (configurable per instance) — a common institutional convention of
+# treating fundamentals as the primary driver and sentiment as a
+# confirming/timing signal, not the other way around. (Chief Technical
+# Officer used to have an entry here too; that department was removed
+# from the platform's main scoring pipeline entirely per user request —
+# see docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md.)
 DEFAULT_DEPARTMENT_WEIGHTS: Dict[str, float] = {
     "Chief Sentiment Officer": 0.7,
-    "Chief Technical Officer": 0.7,
 }
 
 RISK_OFFICER_DEPARTMENT = "Chief Risk Officer"
@@ -87,8 +89,11 @@ class ChiefStrategyOfficer:
     ) -> StrategyReport:
         """
         reports: AgentReports from directional departments (Macro, Bond,
-            Commodity, FX, Equity, Crypto, Sentiment, Technical) for the
-            SAME asset_or_theme.
+            Commodity, FX, Equity, Crypto, Sentiment) for the SAME
+            asset_or_theme. (Chief Technical Officer used to be included
+            here too; it was removed from the platform's main scoring
+            pipeline per user request — see
+            docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md.)
         risk_report: optionally, the Chief Risk Officer's portfolio-level
             report. It is deliberately EXCLUDED from the bias_score
             weighting (its bias is always neutral/0 by design — see
@@ -161,20 +166,14 @@ class ChiefStrategyOfficer:
         )
 
         # --- Execution readiness & institutional commentary ---
-        # technical_confirms answers "does the Chief Technical Officer's own
-        # read point the same direction as the synthesized bias" — only the
-        # Strategy Officer can answer this, since it's the only place that
-        # sees both the overall bias AND each individual department's read.
-        # See docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md.
-        technical_report = next((r for r in reports if r.department == "Chief Technical Officer"), None)
-        technical_confirms = None
-        if technical_report is not None and technical_report.department in contributing:
-            if overall_bias_score != 0 and technical_report.bias_score != 0:
-                technical_confirms = (technical_report.bias_score > 0) == (overall_bias_score > 0)
-
-        execution_readiness = classify_execution_readiness(
-            bias, confidence_score, risk_level, technical_confirms,
-        )
+        # Execution readiness used to also depend on whether a Chief
+        # Technical Officer report confirmed the overall bias. That
+        # department was removed from the platform's main scoring pipeline
+        # entirely (per user request — the platform now scores purely on
+        # fundamentals, macro, and global news/sentiment), so readiness is
+        # judged on confidence and risk alone now. See
+        # docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md.
+        execution_readiness = classify_execution_readiness(bias, confidence_score, risk_level)
         institutional_commentary = build_institutional_commentary(
             asset_or_theme, bias, confidence_score, execution_readiness, evidence=all_evidence, risks=risks,
         )

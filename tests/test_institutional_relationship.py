@@ -93,47 +93,39 @@ def test_describe_strong_divergence_mentions_no_trade():
 # --- classify_execution_readiness ---
 
 def test_neutral_bias_is_always_no_trade():
-    result = classify_execution_readiness(Bias.NEUTRAL, 90.0, RiskLevel.LOW, True)
+    result = classify_execution_readiness(Bias.NEUTRAL, 90.0, RiskLevel.LOW)
     assert result == ExecutionReadiness.NO_TRADE
 
 
 def test_low_confidence_is_no_trade_regardless_of_bias():
-    result = classify_execution_readiness(Bias.BULLISH, 20.0, RiskLevel.LOW, True)
+    result = classify_execution_readiness(Bias.BULLISH, 20.0, RiskLevel.LOW)
     assert result == ExecutionReadiness.NO_TRADE
 
 
 def test_high_risk_caps_readiness_below_high_conviction():
-    result = classify_execution_readiness(Bias.BULLISH, 90.0, RiskLevel.HIGH, True)
+    result = classify_execution_readiness(Bias.BULLISH, 90.0, RiskLevel.HIGH)
     assert result == ExecutionReadiness.CONDITIONAL_OPPORTUNITY
 
 
 def test_high_risk_with_low_confidence_is_no_trade():
-    result = classify_execution_readiness(Bias.BULLISH, 40.0, RiskLevel.HIGH, True)
+    result = classify_execution_readiness(Bias.BULLISH, 40.0, RiskLevel.HIGH)
     assert result == ExecutionReadiness.NO_TRADE
 
 
-def test_full_conditions_met_gives_high_conviction():
-    result = classify_execution_readiness(Bias.BULLISH, 80.0, RiskLevel.MODERATE, True)
+def test_high_confidence_and_acceptable_risk_gives_high_conviction():
+    # No technical-confirmation gate anymore — Chief Technical Officer was
+    # removed from the platform's main scoring pipeline (per user request).
+    result = classify_execution_readiness(Bias.BULLISH, 80.0, RiskLevel.MODERATE)
     assert result == ExecutionReadiness.HIGH_CONVICTION
 
 
-def test_high_confidence_but_no_technical_confirmation_is_conditional_not_high_conviction():
-    result = classify_execution_readiness(Bias.BULLISH, 80.0, RiskLevel.MODERATE, None)
-    assert result == ExecutionReadiness.CONDITIONAL_OPPORTUNITY
-
-
-def test_high_confidence_but_technical_disagrees_is_conditional_not_high_conviction():
-    result = classify_execution_readiness(Bias.BULLISH, 80.0, RiskLevel.MODERATE, False)
-    assert result == ExecutionReadiness.CONDITIONAL_OPPORTUNITY
-
-
 def test_moderate_confidence_is_conditional():
-    result = classify_execution_readiness(Bias.BULLISH, 55.0, RiskLevel.MODERATE, None)
+    result = classify_execution_readiness(Bias.BULLISH, 55.0, RiskLevel.MODERATE)
     assert result == ExecutionReadiness.CONDITIONAL_OPPORTUNITY
 
 
 def test_low_but_not_no_trade_confidence_is_watchlist():
-    result = classify_execution_readiness(Bias.BULLISH, 35.0, RiskLevel.MODERATE, None)
+    result = classify_execution_readiness(Bias.BULLISH, 35.0, RiskLevel.MODERATE)
     assert result == ExecutionReadiness.WATCHLIST
 
 
@@ -145,7 +137,7 @@ def test_commentary_uses_alignment_line_when_present():
         "Gold", Bias.BULLISH, 80.0, ExecutionReadiness.HIGH_CONVICTION, evidence, [],
     )
     assert "Institutional Alignment" in commentary
-    assert "chart confirms" in commentary
+    assert "aligned" in commentary.lower()
 
 
 def test_commentary_falls_back_to_generic_framing_without_alignment_data():
@@ -153,7 +145,7 @@ def test_commentary_falls_back_to_generic_framing_without_alignment_data():
         "AAPL", Bias.BULLISH, 70.0, ExecutionReadiness.CONDITIONAL_OPPORTUNITY, [], [],
     )
     assert "AAPL" in commentary
-    assert "technical confirmation is required" in commentary.lower()
+    assert "caution" in commentary.lower()
 
 
 def test_commentary_no_trade_mentions_capital_preservation():
