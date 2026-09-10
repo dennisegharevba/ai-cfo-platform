@@ -1,5 +1,6 @@
 from models.report import AgentReport, Bias, RiskLevel
 from models.strategy_report import StrategyReport
+from models.swing_signal import SwingSignal, SwingDirection, NewsAlignment
 from database.report_store import ReportStore
 
 
@@ -79,6 +80,28 @@ def test_get_agent_reports_respects_limit_and_newest_first():
     assert len(rows) == 2
     assert rows[0]["bias_score"] == 30.0  # newest first
     assert rows[1]["bias_score"] == 20.0
+
+
+def test_get_agent_reports_since_filters_by_recorded_at():
+    """Added for agents/news_digest.py's weekly digest — needs
+    "everything from the last 7 days," not just "the most recent N,"
+    since a plain limit could silently cut off older reports within the
+    window if more than `limit` were recorded that week."""
+    store = ReportStore(":memory:")
+    store.save_agent_report(_agent_report(bias_score=10.0))
+    cutoff = "2099-01-01T00:00:00+00:00"  # far in the future -- nothing recorded after this
+    store.save_agent_report(_agent_report(bias_score=20.0))
+
+    rows = store.get_agent_reports(since=cutoff)
+    assert rows == []  # nothing was actually recorded at/after the year 2099
+
+
+def test_get_agent_reports_since_none_returns_everything_unfiltered():
+    store = ReportStore(":memory:")
+    store.save_agent_report(_agent_report(bias_score=10.0))
+    store.save_agent_report(_agent_report(bias_score=20.0))
+    rows = store.get_agent_reports(since=None)
+    assert len(rows) == 2
 
 
 def test_save_and_retrieve_strategy_report():
@@ -186,3 +209,84 @@ def test_separate_store_instances_do_not_share_in_memory_data():
     store1.save_agent_report(_agent_report())
     store2 = ReportStore(":memory:")
     assert store2.get_agent_reports() == []  # independent in-memory DBs
+
+
+# ---------------------------------------------------------------------- #
+# Swing Signal persistence (see agents/swing_signal.py)
+# ---------------------------------------------------------------------- #
+
+def _swing_signal(asset="Gold", direction=SwingDirection.BEARISH_TURN, confidence=70.0):
+    return SwingSignal(
+        asset_or_theme=asset,
+        direction=direction,
+        weekly_change=-15000.0,
+        trend_score=100.0,
+        percentile=90.0,
+        extreme_label="extreme_bullish",
+        news_sentiment_score=-40.0,
+        news_alignment=NewsAlignment.CONFIRMS,
+        confidence=confidence,
+        evidence=["Some evidence line"],
+    )
+
+
+def test_save_and_retrieve_swing_signal():
+    store = ReportStore(":memory:")
+    signal_id = store.save_swing_signal(_swing_signal())
+    assert signal_id == 1
+
+    rows = store.get_swing_signals()
+    assert len(rows) == 1
+    assert rows[0]["asset_or_theme"] == "Gold"
+    assert rows[0]["direction"] == "bearish_turn"
+    assert rows[0]["news_alignment"] == "confirms"
+    assert rows[0]["evidence"] == ["Some evidence line"]  # JSON round-tripped back to a list
+    assert rows[0]["alert_sent"] is False  # default, unless explicitly marked
+
+
+def test_save_swing_signal_with_alert_sent_true():
+    store = ReportStore(":memory:")
+    store.save_swing_signal(_swing_signal(), alert_sent=True)
+    rows = store.get_swing_signals()
+    assert rows[0]["alert_sent"] is True
+
+
+def test_mark_swing_signal_alerted():
+    store = ReportStore(":memory:")
+    signal_id = store.save_swing_signal(_swing_signal())  # not alerted yet
+    store.mark_swing_signal_alerted(signal_id)
+    rows = store.get_swing_signals()
+    assert rows[0]["alert_sent"] is True
+
+
+def test_get_swing_signals_filters_by_asset():
+    store = ReportStore(":memory:")
+    store.save_swing_signal(_swing_signal(asset="Gold"))
+    store.save_swing_signal(_swing_signal(asset="Silver"))
+
+    gold_only = store.get_swing_signals(asset_or_theme="Gold")
+    assert len(gold_only) == 1
+    assert gold_only[0]["asset_or_theme"] == "Gold"
+
+
+def test_get_latest_alerted_swing_signal_ignores_unalerted_rows():
+    store = ReportStore(":memory:")
+    store.save_swing_signal(_swing_signal(asset="Gold"), alert_sent=False)
+    assert store.get_latest_alerted_swing_signal("Gold", "bearish_turn") is None
+
+
+def test_get_latest_alerted_swing_signal_returns_most_recent_alerted():
+    store = ReportStore(":memory:")
+    store.save_swing_signal(_swing_signal(asset="Gold", confidence=60.0), alert_sent=True)
+    store.save_swing_signal(_swing_signal(asset="Gold", confidence=90.0), alert_sent=True)
+
+    latest = store.get_latest_alerted_swing_signal("Gold", "bearish_turn")
+    assert latest is not None
+    assert latest["confidence"] == 90.0  # the more recently inserted row
+
+
+def test_get_latest_alerted_swing_signal_distinguishes_direction():
+    store = ReportStore(":memory:")
+    store.save_swing_signal(_swing_signal(asset="Gold", direction=SwingDirection.BULLISH_TURN), alert_sent=True)
+    assert store.get_latest_alerted_swing_signal("Gold", "bearish_turn") is None
+    assert store.get_latest_alerted_swing_signal("Gold", "bullish_turn") is not None

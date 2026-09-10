@@ -120,6 +120,45 @@ def test_all_department_runner_keys_have_a_real_handler():
         assert key in DEPARTMENT_RUNNERS, f"'{key}' used in a watchlist has no matching runner"
 
 
+def test_risk_fundamentals_department_excluded_from_bias_weighting_in_real_cycle(monkeypatch):
+    """
+    A real end-to-end proof that "risk_fundamentals" is correctly routed
+    through ChiefStrategyOfficer's risk_reports parameter (excluded from
+    bias weighting, but still escalates risk_level) — not just tested in
+    isolation on ChiefStrategyOfficer itself. A bearish-scored risk report
+    alongside a bullish macro report should still leave the overall bias
+    bullish, with risk_level escalated.
+    """
+    from models.report import RiskLevel
+
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "macro", _patched_macro_runner)
+
+    def _fake_risk_fundamentals_runner(manager, asset, params):
+        from agents.chief_risk_fundamentals_officer import ChiefRiskFundamentalsOfficer
+        # No price history registered -> honest zero-confidence/HIGH-risk
+        # report, which is exactly the kind of "how risky" signal that
+        # must never be allowed to drag bias toward neutral.
+        return ChiefRiskFundamentalsOfficer(manager, ticker="NOTREGISTERED").analyze(asset)
+
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "risk_fundamentals", _fake_risk_fundamentals_runner)
+
+    watchlist = [{
+        "asset_or_theme": "Test Asset",
+        "departments": {"macro": {}, "risk_fundamentals": {}},
+    }]
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=None)
+
+    results = run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
+
+    assert len(results) == 1
+    assert results[0]["error"] is None
+    assert results[0]["department_count"] == 2  # both departments counted, even though one is risk-routed
+    assert results[0]["bias_score"] > 0  # bullish macro report, unaffected by the risk report's own bias
+    assert results[0]["risk_level"] == RiskLevel.HIGH.value  # escalated by the risk report
+
+
 def test_daily_watchlist_has_no_duplicate_assets():
     from config.watchlist import WATCHLIST_DAILY
     assets = [entry["asset_or_theme"] for entry in WATCHLIST_DAILY]
@@ -167,3 +206,225 @@ def test_equity_runner_degrades_gracefully_when_ticker_not_found(monkeypatch):
 
     assert report.confidence == 0.0
     assert report.is_degraded() is True
+
+
+def test_print_market_breadth_reads_only_price_history_keys(capsys):
+    """
+    Regression-style proof that _print_market_breadth correctly filters
+    to PRICE_HISTORY_ prefixed keys only (ignoring any other registered
+    dataset in the same manager, e.g. COT/FRED keys from the daily
+    watchlist sharing the same manager instance) and computes real
+    breadth from them — not just "doesn't crash."
+    """
+    import scripts.run_daily_cycle as cycle_module
+
+    class FakePriceSource(DataSource):
+        name = "FAKE_YAHOO"
+        default_ttl_seconds = 3600
+
+        def __init__(self, closes_oldest_first):
+            self.closes = closes_oldest_first
+
+        def fetch(self, **kwargs):
+            newest_first = list(reversed(self.closes))
+            history = [{"date": f"2026-06-{i+1:02d}", "close": c} for i, c in enumerate(newest_first)]
+            return {"history": history}, datetime.now(timezone.utc)
+
+    class FakeNonPriceSource(DataSource):
+        name = "FAKE_OTHER"
+        default_ttl_seconds = 3600
+
+        def fetch(self, **kwargs):
+            return {"latest_value": "1.0", "history": []}, datetime.now(timezone.utc)
+
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    manager.register("PRICE_HISTORY_AAPL", primary=FakePriceSource([100 + i * 0.5 for i in range(60)]))
+    manager.register("PRICE_HISTORY_MSFT", primary=FakePriceSource([200 - i * 0.5 for i in range(60)]))
+    manager.register("FRED_CPI", primary=FakeNonPriceSource())  # must NOT be swept into breadth
+
+    cycle_module._print_market_breadth(manager)
+    output = capsys.readouterr().out
+    assert "Market Breadth" in output
+    assert "2 of 2 large-cap tickers usable" in output
+    assert "1 up / 1 down" in output
+
+
+class _FakeCotSource(DataSource):
+    """Returns a payload shaped like CotConnector's multi-week output —
+    same fixture pattern as tests/test_chief_commodity_and_fx_analysts.py."""
+    name = "FAKE_COT"
+    default_ttl_seconds = 300
+
+    def __init__(self, newest_first_net_pairs):
+        """newest_first_net_pairs: list of (noncomm_long, noncomm_short), already newest-first."""
+        self.pairs = newest_first_net_pairs
+
+    def fetch(self, **kwargs):
+        history = [
+            {"report_date": f"2026-06-{i+1:02d}", "noncomm_long": str(l), "noncomm_short": str(s),
+             "open_interest": "500000"}
+            for i, (l, s) in enumerate(self.pairs)
+        ]
+        payload = {"market": "TEST MARKET", "history": history, **history[0]}
+        return payload, datetime.now(timezone.utc)
+
+    def validate_shape(self, payload):
+        return isinstance(payload, dict) and len(payload.get("history", [])) > 0
+
+
+def _reversal_commodity_runner(manager, asset, params):
+    """A 'commodity' runner that registers a COT dataset showing a genuine
+    reversal_watch (net had been building bullish, then this week dropped
+    sharply) — same underlying data test_swing_signal.py's
+    test_bearish_turn_on_reversal_against_bullish_trend uses."""
+    from agents.chief_commodity_analyst import ChiefCommodityAnalyst
+    key = f"COT_{params['cot_market']}"
+    if not manager.is_registered(key):
+        manager.register(key, primary=_FakeCotSource([(110000, 85000), (120000, 80000), (95000, 82000)]))
+    return ChiefCommodityAnalyst(manager, cot_key=key, min_quality=50.0).analyze(asset)
+
+
+def _continuation_commodity_runner(manager, asset, params):
+    """A 'commodity' runner whose COT data is a plain continuation (no
+    reversal) — should never produce a swing signal."""
+    from agents.chief_commodity_analyst import ChiefCommodityAnalyst
+    key = f"COT_{params['cot_market']}"
+    if not manager.is_registered(key):
+        manager.register(key, primary=_FakeCotSource([(140000, 85000), (120000, 80000), (95000, 82000)]))
+    return ChiefCommodityAnalyst(manager, cot_key=key, min_quality=50.0).analyze(asset)
+
+
+def _fake_sentiment_runner_factory(bias_score):
+    def _runner(manager, asset, params):
+        from models.report import AgentReport, Bias, RiskLevel, bias_from_score
+        return AgentReport(
+            department="Chief Sentiment Officer", asset_or_theme=asset, bias=bias_from_score(bias_score),
+            bias_score=bias_score, confidence=55.0, risk_level=RiskLevel.MODERATE,
+        )
+    return _runner
+
+
+def test_swing_signal_detected_and_persisted_on_real_reversal(monkeypatch):
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
+
+    watchlist = [
+        {"asset_or_theme": "Broad Market Sentiment", "departments": {"sentiment": {}}},
+        {"asset_or_theme": "Gold", "departments": {"commodity": {"cot_market": "GOLD"}}},
+    ]
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=None)
+
+    run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
+
+    signals = learning_officer.store.get_swing_signals(asset_or_theme="Gold")
+    assert len(signals) == 1
+    assert signals[0]["direction"] == "bearish_turn"
+    assert signals[0]["news_alignment"] == "confirms"  # -40.0 news score agrees with the bearish turn
+
+
+def test_no_swing_signal_on_continuation(monkeypatch):
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _continuation_commodity_runner)
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(0.0))
+
+    watchlist = [
+        {"asset_or_theme": "Broad Market Sentiment", "departments": {"sentiment": {}}},
+        {"asset_or_theme": "Gold", "departments": {"commodity": {"cot_market": "GOLD"}}},
+    ]
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=None)
+
+    run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
+
+    assert learning_officer.store.get_swing_signals(asset_or_theme="Gold") == []
+
+
+def test_swing_signal_triggers_telegram_alert_when_configured(monkeypatch):
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
+
+    sent_messages = []
+
+    class FakeAlerter:
+        def send_message(self, text, parse_mode="Markdown"):
+            sent_messages.append(text)
+            return {"ok": True}
+
+    watchlist = [
+        {"asset_or_theme": "Broad Market Sentiment", "departments": {"sentiment": {}}},
+        {"asset_or_theme": "Gold", "departments": {"commodity": {"cot_market": "GOLD"}}},
+    ]
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=FakeAlerter())
+
+    run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
+
+    assert len(sent_messages) == 1
+    assert "Gold" in sent_messages[0]
+    signals = learning_officer.store.get_swing_signals(asset_or_theme="Gold")
+    assert signals[0]["alert_sent"] is True
+
+
+def test_swing_signal_not_re_alerted_within_the_same_cot_release_week(monkeypatch):
+    """Running the cycle twice in a row (simulating two consecutive
+    weekday scheduled runs against the same still-unrevised COT release)
+    should only alert once — see agents.swing_signal.should_send_swing_alert."""
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
+
+    sent_messages = []
+
+    class FakeAlerter:
+        def send_message(self, text, parse_mode="Markdown"):
+            sent_messages.append(text)
+            return {"ok": True}
+
+    watchlist = [
+        {"asset_or_theme": "Broad Market Sentiment", "departments": {"sentiment": {}}},
+        {"asset_or_theme": "Gold", "departments": {"commodity": {"cot_market": "GOLD"}}},
+    ]
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=FakeAlerter())
+
+    # Two separate cycles (two separate managers, like two separate scheduled runs).
+    run_cycle(watchlist, manager=DataIntegrityManager(min_quality_threshold=50.0),
+              learning_officer=learning_officer, execution_officer=execution_officer)
+    run_cycle(watchlist, manager=DataIntegrityManager(min_quality_threshold=50.0),
+              learning_officer=learning_officer, execution_officer=execution_officer)
+
+    assert len(sent_messages) == 1  # not two
+    signals = learning_officer.store.get_swing_signals(asset_or_theme="Gold")
+    assert len(signals) == 2  # both detections were still persisted...
+    assert sum(1 for s in signals if s["alert_sent"]) == 1  # ...but only the first was alerted
+
+
+def test_print_market_breadth_counts_requested_tickers_even_when_all_fail(capsys):
+    """
+    Regression test for a real bug caught before shipping: an earlier
+    version pre-filtered to only USABLE datasets before computing breadth,
+    so if every requested ticker failed to fetch, the summary would show
+    the misleading "0 of 0 usable" (implying nothing was even attempted)
+    instead of the honest "0 of N usable" (N tickers were genuinely
+    requested; all of them failed). Proven directly with a source that
+    always raises.
+    """
+    import scripts.run_daily_cycle as cycle_module
+    from core.data_source import DataSourceError
+
+    class AlwaysFailsSource(DataSource):
+        name = "FAKE_FAILING_YAHOO"
+        default_ttl_seconds = 3600
+
+        def fetch(self, **kwargs):
+            raise DataSourceError("simulated network failure")
+
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    manager.register("PRICE_HISTORY_AAPL", primary=AlwaysFailsSource())
+    manager.register("PRICE_HISTORY_MSFT", primary=AlwaysFailsSource())
+
+    cycle_module._print_market_breadth(manager)
+    output = capsys.readouterr().out
+    assert "0 of 2 large-cap tickers usable" in output

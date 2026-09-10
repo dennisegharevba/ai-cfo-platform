@@ -27,6 +27,7 @@ from models.report import AgentReport
 from models.strategy_report import StrategyReport
 from models.trade_decision import TradeDecision
 from models.open_trade import OpenTrade, TradeDirection
+from models.swing_signal import SwingSignal
 
 from .schema import SCHEMA_SQL
 
@@ -226,6 +227,81 @@ class ReportStore:
         self._conn.commit()
 
     # ------------------------------------------------------------------ #
+    # Swing Signal: writes
+    # ------------------------------------------------------------------ #
+    def save_swing_signal(self, signal: SwingSignal, alert_sent: bool = False) -> int:
+        cur = self._conn.execute(
+            """
+            INSERT INTO swing_signals
+                (asset_or_theme, direction, weekly_change, trend_score, percentile,
+                 extreme_label, news_sentiment_score, news_alignment, confidence,
+                 evidence, alert_sent, generated_at, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                signal.asset_or_theme,
+                signal.direction.value,
+                signal.weekly_change,
+                signal.trend_score,
+                signal.percentile,
+                signal.extreme_label,
+                signal.news_sentiment_score,
+                signal.news_alignment.value,
+                signal.confidence,
+                json.dumps(signal.evidence),
+                int(alert_sent),
+                signal.generated_at.isoformat(),
+                _now_iso(),
+            ),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def mark_swing_signal_alerted(self, swing_signal_id: int) -> None:
+        self._conn.execute("UPDATE swing_signals SET alert_sent = 1 WHERE id = ?", (swing_signal_id,))
+        self._conn.commit()
+
+    # ------------------------------------------------------------------ #
+    # Swing Signal: reads
+    # ------------------------------------------------------------------ #
+    def get_swing_signals(
+        self, asset_or_theme: Optional[str] = None, since: Optional[str] = None, limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Newest-first. `since`: optional ISO recorded_at cutoff, same convention as get_agent_reports()."""
+        query = "SELECT * FROM swing_signals WHERE 1=1"
+        params: List[Any] = []
+        if asset_or_theme is not None:
+            query += " AND asset_or_theme = ?"
+            params.append(asset_or_theme)
+        if since is not None:
+            query += " AND recorded_at >= ?"
+            params.append(since)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self._conn.execute(query, params).fetchall()
+        return [self._row_to_swing_signal_dict(row) for row in rows]
+
+    def get_latest_alerted_swing_signal(self, asset_or_theme: str, direction: str) -> Optional[Dict[str, Any]]:
+        """
+        Most recent ALERTED swing signal for this exact asset+direction, or
+        None — used to dedupe Telegram alerts (see
+        agents/swing_signal.py's should_send_swing_alert() /
+        scripts/run_daily_cycle.py): re-alerting on every single weekday
+        run while the same reversal_watch condition persists would be
+        spam, since the underlying COT data itself only updates weekly.
+        """
+        row = self._conn.execute(
+            """
+            SELECT * FROM swing_signals
+            WHERE asset_or_theme = ? AND direction = ? AND alert_sent = 1
+            ORDER BY id DESC LIMIT 1
+            """,
+            (asset_or_theme, direction),
+        ).fetchone()
+        return self._row_to_swing_signal_dict(row) if row else None
+
+    # ------------------------------------------------------------------ #
     # Trade Decision Engine: reads
     # ------------------------------------------------------------------ #
     def get_trade_decisions(self, asset_or_theme: Optional[str] = None, limit: int = 500) -> List[Dict[str, Any]]:
@@ -264,8 +340,20 @@ class ReportStore:
     # Reads
     # ------------------------------------------------------------------ #
     def get_agent_reports(
-        self, department: Optional[str] = None, asset_or_theme: Optional[str] = None, limit: int = 100,
+        self, department: Optional[str] = None, asset_or_theme: Optional[str] = None,
+        since: Optional[str] = None, limit: int = 100,
     ) -> List[Dict[str, Any]]:
+        """
+        since: optional ISO-format timestamp string (matching
+        recorded_at's own format — see _now_iso()) — only reports
+        recorded at or after this moment are returned. Added for
+        agents/news_digest.py's weekly digest, which needs "everything
+        from the last 7 days," not just "the most recent N reports"
+        (limit alone can't express a date range: if more than `limit`
+        reports were recorded in the window, a plain limit would
+        silently cut off older ones within the week rather than
+        capturing the whole period).
+        """
         query = "SELECT * FROM agent_reports WHERE 1=1"
         params: List[Any] = []
         if department is not None:
@@ -274,6 +362,9 @@ class ReportStore:
         if asset_or_theme is not None:
             query += " AND asset_or_theme = ?"
             params.append(asset_or_theme)
+        if since is not None:
+            query += " AND recorded_at >= ?"
+            params.append(since)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
 
@@ -324,4 +415,11 @@ class ReportStore:
         d = dict(row)
         for field in ("key_catalysts", "key_risks", "contributing_departments", "excluded_departments"):
             d[field] = json.loads(d[field])
+        return d
+
+    @staticmethod
+    def _row_to_swing_signal_dict(row: sqlite3.Row) -> Dict[str, Any]:
+        d = dict(row)
+        d["evidence"] = json.loads(d["evidence"])
+        d["alert_sent"] = bool(d["alert_sent"])
         return d

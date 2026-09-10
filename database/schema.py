@@ -116,4 +116,29 @@ CREATE INDEX IF NOT EXISTS idx_trade_decisions_asset ON trade_decisions(asset_or
 CREATE INDEX IF NOT EXISTS idx_trade_decisions_recorded_at ON trade_decisions(recorded_at);
 CREATE INDEX IF NOT EXISTS idx_open_trades_asset ON open_trades(asset_or_theme);
 CREATE INDEX IF NOT EXISTS idx_open_trades_closed_at ON open_trades(closed_at);
+
+-- Swing Signal table (see agents/swing_signal.py and
+-- docs/ARCHITECTURE_SWING_SIGNAL.md) — a swing-trading-specific reading of
+-- a COT positioning reversal cross-checked against broad market news
+-- sentiment. Additive alongside every table above; nothing here changes
+-- what any existing table stores.
+CREATE TABLE IF NOT EXISTS swing_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_or_theme TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    weekly_change REAL NOT NULL,
+    trend_score REAL NOT NULL,
+    percentile REAL,
+    extreme_label TEXT,
+    news_sentiment_score REAL,
+    news_alignment TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    evidence TEXT NOT NULL,
+    alert_sent INTEGER NOT NULL DEFAULT 0,
+    generated_at TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_swing_signals_asset ON swing_signals(asset_or_theme);
+CREATE INDEX IF NOT EXISTS idx_swing_signals_recorded_at ON swing_signals(recorded_at);
 """
