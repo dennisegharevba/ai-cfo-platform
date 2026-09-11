@@ -128,3 +128,70 @@ through the real daily cycle, and 3 new tests in
 `tests/test_dashboard_pages.py` (executed via Streamlit's `AppTest`
 harness, not just imported) covering the empty state, an offline live
 scan, and rendering a real saved signal.
+
+## Backtesting — has this actually been validated against real history?
+
+Not until it's actually run with real data — but the machinery to do so
+now exists, wired into this platform's existing signal-validation
+infrastructure (`agents/backtest_engine.py`'s correlation validation and
+`agents/strategy_backtest.py`'s simulated-trade metrics) rather than a
+new, one-off validation approach. See `agents/swing_signal_backtest.py`
+for the full reasoning; the short version:
+
+- `connectors/cot_connector.py` gained `fetch_cot_history_range()` — a
+  bulk historical fetch (the live `CotConnector` only ever fetches the
+  most recent handful of weeks, deliberately; a backtest needs years).
+- `agents/swing_signal_backtest.py`'s `swing_signal_history()` walks that
+  full history sequentially and reuses `build_swing_signal()` UNMODIFIED
+  at every week, recording a `(date, signed_confidence)` pair only on the
+  weeks a signal actually fires — an event signal's silence isn't itself
+  a reading. This output plugs directly into both existing backtest
+  engines with no changes to either.
+- `scripts/run_swing_signal_backtest.py` runs both and prints a full
+  report: correlation with forward returns, and — if you'd traded every
+  fired signal — win rate, profit factor, Sharpe/Sortino, max drawdown.
+
+**Honest limitation, inherited and unavoidable**: every backtested signal
+is COT-only. There is no historical news headline archive on this
+platform (`agents/backtest_signals.py`'s own longstanding limitation), so
+a backtested signal is always scored as `NewsAlignment.NO_DATA` — base
+confidence, no news bonus or penalty. This answers a real but narrower
+question than the live feature asks: does the COT-reversal-off-an-
+extreme-reading mechanism alone have predictive value? If it doesn't,
+the live feature's news cross-check can't be assumed to be what rescues
+it, since news was never validated here either.
+
+**Update, 2026-09-11 — actually run against real data.** Gold
+(`GOLD - COMMODITY EXCHANGE INC.` / `GC=F`), 2021-09-12 to 2026-09-11,
+8-week COT window (the live feature's default). The result is a real,
+honest negative, not a "not yet validated" placeholder anymore:
+
+- **56 signals fired** (55 usable for the correlation test — 1 skipped at
+  the edge of the available price history).
+- **Correlation vs. 20-day forward return: -0.221.** Negative direction —
+  bullish readings tended to precede *worse* forward returns — but below
+  this platform's own significance threshold (0.267) at n=55, so on its
+  own this number is not conclusive either way.
+- **Strategy backtest** (one unit per fired signal, fixed holding period,
+  no position sizing, no slippage beyond the engine's flat built-in cost):
+  55 trades, 21W/34L, **38.2% win rate, profit factor 0.46**, total
+  compounded return **-45.1%**, Sharpe **-1.00**, Sortino **-0.87**, max
+  drawdown **-49.1%**.
+
+Profit factor 0.46 means roughly $2.17 lost for every $1 won — this is not
+a "no edge detected" result, it's a losing one, and both the correlation
+and strategy numbers point the same direction, which is more meaningful
+than the correlation test's significance flag alone. Worth weighing before
+drawing a firm conclusion: almost every fired signal scored the bare
+`confidence=50.0` (the `NEWS_CONFIRMS_BONUS`/`NEWS_CONTRADICTS_PENALTY`
+never apply here, per the NO_DATA limitation above), and
+`EXTREME_PERCENTILE_BONUS` only applied on 6 of the 55 signals — so what
+was actually tested is the raw "COT reversal off a trend" mechanism in
+isolation, not the full live confidence model with real news scoring
+folded in. This is also one asset over one five-year window; it does not
+by itself say whether this is Gold-specific or a systemic problem with the
+mechanism across the watchlist. Run
+`scripts/run_swing_signal_backtest.py --asset <name>` (any commodity/FX
+display name from `config/watchlist.py`, e.g. `Silver`, `"EUR/USD"`,
+`"WTI Crude Oil"`) to extend this to other assets before trusting or
+distrusting the feature as a whole — that comparison is in progress.
