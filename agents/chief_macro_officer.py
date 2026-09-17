@@ -61,6 +61,7 @@ from models.report import AgentReport, RiskLevel
 from models.fundamental_factor import FundamentalFactor, factor_bias_from_score
 
 from .base_agent import BaseAgent
+from .factor_narrative import describe_factor
 from .fundamental_scoring_engine import score_category
 from .institutional_market_regime import (
     score_fed_policy, score_real_yield, score_treasury_yield, score_vix,
@@ -195,6 +196,104 @@ _FACTOR_SPECS = [
     # which it does almost every quarter.
     ("Federal Debt (Total Public Debt)", KEY_FEDERAL_DEBT, True, 3.0, 8.0),
 ]
+
+# Update, 2026-09-17: real narrative content for every factor above — see
+# agents/factor_narrative.py's module docstring for the "why this exists"
+# (the direct user complaint that catalysts/risks were score labels, not
+# analysis). Keyed by the exact display name from _FACTOR_SPECS.
+#
+# Units are each series' REAL published FRED unit (Billions/Millions of
+# Dollars, Percent, Thousands of persons/units, etc. per that series' own
+# FRED metadata) — not rescaled or invented. The bullish/bearish meaning
+# text describes the standard, widely-cited macro relationship for that
+# factor's direction; it deliberately does NOT name a specific asset
+# (gold, EUR, etc.) since this exact Macro report is now merged into every
+# individual asset's fundamental read (see scripts/run_daily_cycle.py and
+# dashboard/dashboard_utils.py's with_broad_context()) — asset-specific
+# USD/gold reasoning belongs to Chief Commodity Fundamentals Officer,
+# which already covers that separately for precious metals.
+_FACTOR_NARRATIVE_META = {
+    "CPI (Headline, YoY)": (
+        "%",
+        "cooling headline inflation gives the Fed more room to cut rates, typically supportive for risk assets",
+        "headline inflation remains elevated, keeping the Fed cautious about cutting rates",
+    ),
+    "Core CPI (YoY)": (
+        "%",
+        "underlying inflation (ex food & energy) is cooling, reinforcing the case for rate cuts",
+        "underlying inflation is running hot, a headwind against near-term rate cuts",
+    ),
+    "PPI (Producer Prices)": (
+        "%",
+        "producer-level price pressure is easing, an early sign consumer inflation may cool too",
+        "producer-level prices are accelerating, an early warning that consumer inflation could reaccelerate",
+    ),
+    "Core PCE (Fed's preferred inflation gauge)": (
+        "%",
+        "the Fed's own preferred inflation gauge is cooling toward its 2% target",
+        "the Fed's own preferred inflation gauge remains above its 2% target",
+    ),
+    "GDP": (
+        "$B",
+        "growth is running above trend, a supportive signal for the broader economy and risk assets",
+        "growth is running below trend, a warning sign for broader economic momentum",
+    ),
+    "Retail Sales": (
+        "$M",
+        "consumer spending is holding up, a supportive sign for growth",
+        "consumer spending is softening, a warning sign for growth",
+    ),
+    "Unemployment Rate": (
+        "%",
+        "a falling unemployment rate signals continued labor-market strength",
+        "a rising unemployment rate signals labor-market softening",
+    ),
+    "Nonfarm Payrolls": (
+        "K",
+        "payroll growth remains solid, a sign of continued labor-market strength",
+        "payroll growth is slowing, a sign of labor-market softening",
+    ),
+    "Average Hourly Earnings": (
+        "$/hr",
+        "wage growth is firm, supportive of consumer spending power",
+        "wage growth is slowing, a drag on consumer spending power",
+    ),
+    "JOLTS Job Openings": (
+        "K",
+        "job openings remain elevated, signaling continued labor demand",
+        "job openings are declining, signaling cooling labor demand",
+    ),
+    "Initial Jobless Claims": (
+        "K",
+        "falling claims signal a still-resilient labor market",
+        "rising claims signal early labor-market softening",
+    ),
+    "Trade-Weighted Dollar Index": (
+        "index",
+        "a weaker dollar is broadly supportive for dollar-priced assets and US exporters",
+        "a stronger dollar is a headwind for dollar-priced assets and US exporters",
+    ),
+    "Credit Spreads (ICE BofA US Corporate OAS)": (
+        "%",
+        "narrowing credit spreads signal easing financial stress and improving risk appetite",
+        "widening credit spreads signal rising financial stress and deteriorating risk appetite",
+    ),
+    "Consumer Confidence (U. Michigan)": (
+        "index",
+        "rising consumer confidence supports the spending outlook",
+        "falling consumer confidence weighs on the spending outlook",
+    ),
+    "Housing Starts": (
+        "K",
+        "rising housing starts signal a supportive construction/investment cycle",
+        "falling housing starts signal a cooling construction/investment cycle",
+    ),
+    "Federal Debt (Total Public Debt)": (
+        "$M",
+        "debt growth has decelerated, a modest positive for long-run fiscal sustainability",
+        "debt continues to grow rapidly, a long-run fiscal-sustainability concern",
+    ),
+}
 
 
 def _value_n_days_ago(history: List[dict], days: int) -> Optional[float]:
@@ -369,13 +468,20 @@ class ChiefMacroOfficer(BaseAgent):
         category_result = score_category(CATEGORY, factors)
         risk_level = category_result.risk_level
 
+        # Real narrative, not a score label — see agents/factor_narrative.py
+        # and _FACTOR_NARRATIVE_META above for the 2026-09-17 fix.
         evidence = [
-            f"{f.name}: {f.bias.value} (score {f.score:+.1f}, current={f.current_value}, "
-            f"as of {f.last_updated.date()})"
+            describe_factor(f, *_FACTOR_NARRATIVE_META.get(f.name, ("", "", "")))
             for f in factors
         ]
-        catalysts = [f"{f.name} is supportive (score {f.score:+.1f})" for f in factors if f.bias.value == "bullish"]
-        risks = [f"{f.name} is a headwind (score {f.score:+.1f})" for f in factors if f.bias.value == "bearish"]
+        catalysts = [
+            describe_factor(f, *_FACTOR_NARRATIVE_META.get(f.name, ("", "", "")))
+            for f in factors if f.bias.value == "bullish"
+        ]
+        risks = [
+            describe_factor(f, *_FACTOR_NARRATIVE_META.get(f.name, ("", "", "")))
+            for f in factors if f.bias.value == "bearish"
+        ]
 
         if len(factors) < len(_FACTOR_SPECS) // 2:
             # Fewer than half the expected factors came through usable —

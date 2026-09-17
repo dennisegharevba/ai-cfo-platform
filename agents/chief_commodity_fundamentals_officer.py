@@ -56,6 +56,7 @@ from models.report import AgentReport, RiskLevel
 from models.fundamental_factor import FundamentalFactor, factor_bias_from_score
 
 from .base_agent import BaseAgent
+from .factor_narrative import describe_factor
 from .fundamental_scoring_engine import score_category
 from .risk_severity import worse_risk_level
 from .trend_scoring import series_trend_score
@@ -158,6 +159,44 @@ EIA_ROUTE_SPECS: Dict[tuple, tuple] = {
     ),
 }
 EIA_ROUTE_SPECS[("WTI Crude Oil", "crude_oil_inventories")] = EIA_ROUTE_SPECS[("Crude Oil", "crude_oil_inventories")]
+
+# Update, 2026-09-17: real narrative content — see agents/factor_narrative.py's
+# module docstring (this is the exact department the user's Gold screenshot
+# complaint was about: "not showing any real fundamental reasons... still
+# stick to COT reports"). Unlike Chief Macro Officer's narrative meta
+# (deliberately asset-agnostic, since that report is shared across every
+# asset), these factors genuinely ARE asset-specific — the whole point of
+# this department is "why USD strength/rates matter for precious metals
+# specifically" and "why inventories matter for this specific commodity" —
+# so the meaning text names the metal/commodity directly. Keyed by exact
+# display name from COMMODITY_FACTOR_SPECS.
+_FACTOR_NARRATIVE_META = {
+    "US 10Y Real Yield (TIPS)": (
+        "%",
+        "falling real yields reduce the opportunity cost of holding non-yielding gold",
+        "rising real yields increase the opportunity cost of holding non-yielding gold",
+    ),
+    "Trade-Weighted Dollar Index": (
+        "index",
+        "a weaker dollar makes dollar-priced gold cheaper for holders of other currencies",
+        "a stronger dollar makes dollar-priced gold more expensive for holders of other currencies",
+    ),
+    "Federal Funds Rate": (
+        "%",
+        "a falling policy rate reduces the opportunity cost of holding non-yielding gold",
+        "a rising or elevated policy rate increases the opportunity cost of holding non-yielding gold",
+    ),
+    "Crude Oil Inventories (EIA Weekly Stocks)": (
+        "K",
+        "falling inventories point to tightening supply, typically supportive for crude prices",
+        "rising inventories point to loosening supply, typically a headwind for crude prices",
+    ),
+    "Natural Gas Storage (EIA Weekly)": (
+        "Bcf",
+        "falling storage levels point to tightening supply, typically supportive for natural gas prices",
+        "rising storage levels point to loosening supply, typically a headwind for natural gas prices",
+    ),
+}
 
 
 def _resolve_key(commodity: str, suffix: str, override_key: Optional[str]) -> str:
@@ -280,13 +319,23 @@ class ChiefCommodityFundamentalsOfficer(BaseAgent):
         category_result = score_category(CATEGORY, factors)
         risk_level = category_result.risk_level
 
+        # Real narrative, not a score label — see agents/factor_narrative.py
+        # and _FACTOR_NARRATIVE_META above for the 2026-09-17 fix (the
+        # direct fix for the user's "not real fundamental interpretations,
+        # I want real fundamental interpretations not just based on COT
+        # reports" complaint on Gold's Trade Decision Engine page).
         evidence = [
-            f"{f.name}: {f.bias.value} (score {f.score:+.1f}, current={f.current_value}, "
-            f"as of {f.last_updated.date()})"
+            describe_factor(f, *_FACTOR_NARRATIVE_META.get(f.name, ("", "", "")))
             for f in factors
         ]
-        catalysts = [f"{f.name} is supportive (score {f.score:+.1f})" for f in factors if f.bias.value == "bullish"]
-        risks = [f"{f.name} is a headwind (score {f.score:+.1f})" for f in factors if f.bias.value == "bearish"]
+        catalysts = [
+            describe_factor(f, *_FACTOR_NARRATIVE_META.get(f.name, ("", "", "")))
+            for f in factors if f.bias.value == "bullish"
+        ]
+        risks = [
+            describe_factor(f, *_FACTOR_NARRATIVE_META.get(f.name, ("", "", "")))
+            for f in factors if f.bias.value == "bearish"
+        ]
 
         if self._factor_specs and len(factors) < len(self._factor_specs):
             risk_level = worse_risk_level(risk_level, RiskLevel.ELEVATED)

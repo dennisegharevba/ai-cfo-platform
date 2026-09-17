@@ -329,3 +329,27 @@ def test_register_macro_data_sources_widens_fetch_window_for_fed_funds_only():
     calls_by_series = {c.kwargs["series_id"]: c.kwargs for c in mock_init.call_args_list}
     assert calls_by_series["DFEDTARU"]["limit"] == 90
     assert calls_by_series["CPIAUCSL"]["limit"] == 5
+
+
+def test_catalysts_and_risks_are_real_narrative_not_score_labels():
+    """
+    Update, 2026-09-17: direct fix for a user complaint that catalysts/
+    risks read as "Core CPI is a headwind (score -14.2)" with no real
+    number, no comparison to the prior reading, and no explanation of why
+    it matters. Confirms the fix actually reaches the AgentReport this
+    dashboard renders, not just agents/factor_narrative.py in isolation.
+    """
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    _register_all_factors(manager, direction="bearish")
+    _register_regime_sources(manager)
+    report = ChiefMacroOfficer(manager).analyze("US Macro Outlook")
+
+    assert report.risks, "expected at least one risk line with all factors bearish"
+    for r in report.risks:
+        assert "is a headwind (score" not in r
+        assert "is supportive (score" not in r
+    # A real risk line should carry the actual current value (e.g. "80.0%"
+    # or similar), not just a factor name and a bare score number.
+    cpi_risk = next(r for r in report.risks if r.startswith("CPI (Headline"))
+    assert "%" in cpi_risk or any(ch.isdigit() for ch in cpi_risk)
+    assert " — " in cpi_risk  # the real "why this matters" clause is present

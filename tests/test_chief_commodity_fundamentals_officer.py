@@ -49,6 +49,30 @@ def test_rising_natural_gas_storage_is_bearish():
     assert any("headwind" in r.lower() for r in report.risks)
 
 
+def test_gold_catalysts_and_risks_are_real_narrative_not_score_labels():
+    """
+    Update, 2026-09-17: direct fix for the user's screenshot complaint —
+    Gold's Trade Decision Engine showed "Federal Funds Rate is a headwind
+    (score -X.X)" with no real number or explanation, "still stuck to COT
+    reports" with no real fundamental interpretation. Confirms Gold's own
+    USD-fundamentals factors (real yield, dollar index, fed funds) now
+    carry a real, gold-specific explanation.
+    """
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    from agents.chief_macro_officer import KEY_REAL_YIELD, KEY_DOLLAR_INDEX, KEY_FED_FUNDS
+    manager.register(KEY_REAL_YIELD, primary=EiaLikeSource([1.0, 1.5, 2.0]))  # rising real yield -> bearish for gold
+    manager.register(KEY_DOLLAR_INDEX, primary=EiaLikeSource([100, 105, 110]))
+    manager.register(KEY_FED_FUNDS, primary=EiaLikeSource([4.0, 4.5, 5.0]))
+
+    report = ChiefCommodityFundamentalsOfficer(manager, commodity="Gold").analyze("Gold")
+
+    assert report.risks, "expected at least one risk line with all factors bearish for gold"
+    for r in report.risks:
+        assert "is a headwind (score" not in r
+        assert "is supportive (score" not in r
+    assert any("gold" in r.lower() for r in report.risks)  # real, asset-specific reasoning
+
+
 def test_unconfigured_commodity_yields_honest_neutral_result_no_fabrication():
     # Copper has no factors configured at all — the honest, correct
     # behavior per the module's documented scope, not a bug.
