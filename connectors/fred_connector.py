@@ -28,10 +28,19 @@ class FredConnector(DataSource):
     name = "FRED"
     default_ttl_seconds = 300  # per spec: economic calendar/series ~5 min
 
-    def __init__(self, series_id: str, api_key: str, timeout: int = 10):
+    def __init__(self, series_id: str, api_key: str, timeout: int = 10, limit: int = 5):
         self.series_id = series_id
         self.api_key = api_key
         self.timeout = timeout
+        # Observations to fetch (newest-first). Default of 5 is right for
+        # this platform's usual monthly/quarterly series (5 months/quarters
+        # is a sensible trend window). A DAILY series needs a much wider
+        # limit to cover the same real-world span — see
+        # agents.chief_macro_officer.register_macro_data_sources()'s
+        # per-series override for the Fed Funds Rate factor, which fetches
+        # a daily target-range series specifically so a same-day FOMC move
+        # is visible immediately rather than waiting for a monthly average.
+        self.limit = limit
 
     def fetch(self, **kwargs) -> tuple[Any, Optional[datetime]]:
         if not self.api_key:
@@ -42,7 +51,7 @@ class FredConnector(DataSource):
             "api_key": self.api_key,
             "file_type": "json",
             "sort_order": "desc",
-            "limit": 5,
+            "limit": self.limit,
         }
         try:
             resp = requests.get(FRED_BASE_URL, params=params, timeout=self.timeout)
