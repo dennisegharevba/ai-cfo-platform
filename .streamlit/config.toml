@@ -1,0 +1,26 @@
+# AI CFO Platform — dashboard theme.
+#
+# Design direction: an institutional multi-asset research terminal, not a
+# generic dashboard template. A dark background with a disciplined,
+# meaningful color system is the genuine visual vernacular of this
+# subject (Bloomberg/TradingView-style terminals use exactly this pattern
+# for real ergonomic reasons — reduced eye strain during extended data
+# monitoring), not a generic AI-cliché applied without reason. Red/green
+# is reserved STRICTLY for bullish/bearish signal (never decoration),
+# matching this platform's actual data model (bias_score is -100..+100
+# on every single agent) — see dashboard/dashboard_utils.py's
+# render_bias_gauge(), the platform's one signature visual element.
+#
+# The accent color (antique gold, #C9A227) is deliberately NOT the
+# generic AI-design-cliché terracotta/vermilion — it's chosen because
+# this platform's own defining feature is precious-metals fundamentals
+# (Gold/Silver/Platinum/Palladium backed by real USD data), so the
+# platform's own visual identity echoes its actual subject matter.
+
+[theme]
+base = "dark"
+primaryColor = "#C9A227"
+backgroundColor = "#0B0E14"
+secondaryBackgroundColor = "#131722"
+textColor = "#E6E8EB"
+font = "sans serif"

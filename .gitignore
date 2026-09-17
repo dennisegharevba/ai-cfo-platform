@@ -8,3 +8,10 @@ venv/
 .DS_Store
 *.db
 .streamlit/secrets.toml
+
+# Personal reference notes, not app code
+\# PremiumDiscount Trading Rules (1H.txt
+tradingview claude.txt
+
+# Files saved locally from Claude chat deliveries
+Claude outputs/
