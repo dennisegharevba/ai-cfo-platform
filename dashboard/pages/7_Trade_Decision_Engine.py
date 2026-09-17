@@ -19,7 +19,7 @@ import streamlit as st
 
 from dashboard.dashboard_utils import (
     get_report_store, get_manager, risk_badge, momentum_badge, trade_health_badge, inject_terminal_css,
-    with_broad_context,
+    with_broad_context, render_score_ring,
 )
 from connectors.yahoo_history_connector import YahooHistoryConnector
 from agents.chief_trade_decision_officer import ChiefTradeDecisionOfficer
@@ -107,11 +107,20 @@ else:
         st.divider()
 
         # --- Section 1-2: the three independent scores + overall blend ---
+        # Each score gets its own ring gauge (not one shared bar, not a
+        # plain number) — per an explicit request that every score have
+        # "their own circles". Fundamental/Technical/Risk/Overall are all
+        # already 0-100 (agents/trade_scoring.py), same scale the ring expects.
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Fundamental Score (40%)", f"{decision.fundamental_score:.0f}/100")
-        c2.metric("Technical Score (40%)", f"{decision.technical_score:.0f}/100")
-        c3.metric("Risk Score (20%)", f"{decision.risk_score:.0f}/100", help="Higher = LOWER risk")
-        c4.metric("Overall Score", f"{decision.overall_score:.0f}/100")
+        with c1:
+            render_score_ring("Fundamental (40%)", decision.fundamental_score)
+        with c2:
+            render_score_ring("Technical (40%)", decision.technical_score)
+        with c3:
+            render_score_ring("Risk (20%)", decision.risk_score)
+            st.caption("Higher = LOWER risk")
+        with c4:
+            render_score_ring("Overall", decision.overall_score)
 
         # --- Section 3: score momentum ---
         st.subheader("Score Momentum")

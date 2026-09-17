@@ -11,7 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import streamlit as st
 
-from dashboard.dashboard_utils import risk_badge, bias_badge, inject_terminal_css, render_bias_gauge, with_broad_context
+from dashboard.dashboard_utils import (
+    risk_badge, bias_badge, inject_terminal_css, render_bias_gauge, with_broad_context, render_score_ring,
+)
 from agents.chief_strategy_officer import ChiefStrategyOfficer
 from agents.institutional_relationship import (
     ExecutionReadiness, EXECUTION_READINESS_BADGES, EXECUTION_READINESS_LABELS,
@@ -61,9 +63,13 @@ else:
     result = st.session_state.get("last_strategy_report")
     if result is not None and result.asset_or_theme == asset:
         st.divider()
+        # Each score gets its own ring gauge — per an explicit request that
+        # every score have "their own circles" rather than a plain number.
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Overall Market Score", f"{result.overall_market_score:.0f}/100")
-        col2.metric("Confidence Score", f"{result.confidence_score:.0f}/100")
+        with col1:
+            render_score_ring("Overall Market Score", result.overall_market_score)
+        with col2:
+            render_score_ring("Confidence Score", result.confidence_score)
         col3.markdown(f"**Risk Level**\n\n{risk_badge(result.risk_level.value)}")
         col4.markdown(f"**Directional Bias**\n\n{bias_badge(result.bias.value)}")
         render_bias_gauge(result.bias_score, width=700)

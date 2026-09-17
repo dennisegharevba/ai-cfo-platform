@@ -141,6 +141,52 @@ def render_bias_gauge(bias_score: float, width: int = 280, height: int = 34) -> 
     st.markdown(svg, unsafe_allow_html=True)
 
 
+def render_score_ring(label: str, value: float, size: int = 120, suffix: str = "") -> None:
+    """
+    One score as its own circular ring gauge — per an explicit request
+    that Fundamental/Technical/Risk/Overall (and similar 0-100 scores)
+    each get "their own circles" rather than sharing one shape, or being
+    plain st.metric() numbers with no visual read at all.
+
+    `value` is expected on the same 0-100 scale every score this is used
+    for already uses (agents.trade_scoring.py's fundamental_score()/
+    technical_score()/risk_score()/technical_score() all clamp to 0-100,
+    same as models.strategy_report.StrategyReport's overall_market_score/
+    confidence_score) — silently clamped here too, defensively, never
+    fabricated beyond what's passed in.
+
+    Uses the same PLATFORM_COLORS bearish/neutral/bullish gradient as
+    render_bias_gauge, so a low ring and a bearish gauge marker always
+    mean the same thing at a glance across every page.
+    """
+    clamped = max(0.0, min(100.0, value))
+    radius = size / 2 - 10
+    circumference = 2 * 3.14159265 * radius
+    fill_length = circumference * (clamped / 100.0)
+    color = (
+        PLATFORM_COLORS["bearish"] if clamped < 35
+        else PLATFORM_COLORS["bullish"] if clamped > 65
+        else PLATFORM_COLORS["neutral"]
+    )
+    center = size / 2
+    font_size = size * 0.22
+    svg = f"""
+    <div style="text-align:center;">
+    <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" role="img" aria-label="{label} {clamped:.0f} of 100">
+        <circle cx="{center}" cy="{center}" r="{radius}" fill="none" stroke="{PLATFORM_COLORS['panel']}" stroke-width="10" opacity="0.55"/>
+        <circle cx="{center}" cy="{center}" r="{radius}" fill="none" stroke="{color}" stroke-width="10"
+            stroke-dasharray="{fill_length:.1f} {circumference:.1f}" stroke-linecap="round"
+            transform="rotate(-90 {center} {center})"/>
+        <text x="{center}" y="{center}" text-anchor="middle" dominant-baseline="central"
+            font-family="'JetBrains Mono','IBM Plex Mono','SF Mono',Consolas,monospace"
+            font-size="{font_size:.0f}" fill="{PLATFORM_COLORS['text']}">{clamped:.0f}{suffix}</text>
+    </svg>
+    <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; opacity:0.75; margin-top:-6px;">{label}</div>
+    </div>
+    """
+    st.markdown(svg, unsafe_allow_html=True)
+
+
 def get_manager() -> DataIntegrityManager:
     """One shared DataIntegrityManager per dashboard session, so caching
     across pages actually means something (a re-fetch on page 2 doesn't
@@ -208,7 +254,15 @@ def render_agent_report(report) -> None:
     """Render one AgentReport as a compact Streamlit card."""
     col1, col2, col3 = st.columns(3)
     col1.metric("Bias Score", f"{report.bias_score:+.1f}", bias_badge(report.bias.value))
-    col2.metric("Confidence", f"{report.confidence:.0f}/100")
+    with col2:
+        # Confidence is already 0-100, same scale render_score_ring
+        # expects — gets its own circle like every other 0-100 score on
+        # the platform now does. Bias Score stays a plain metric + the
+        # horizontal gauge below: it's -100..+100 and DIRECTIONAL (which
+        # side of zero it's on matters as much as the magnitude), a
+        # different shape of information than "how good is this reading,"
+        # which is what the ring gauges represent everywhere else.
+        render_score_ring("Confidence", report.confidence, size=100)
     col3.markdown(f"**Risk Level**\n\n{risk_badge(report.risk_level.value)}")
     render_bias_gauge(report.bias_score)
 
