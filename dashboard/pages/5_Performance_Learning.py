@@ -11,9 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import streamlit as st
 
-from dashboard.dashboard_utils import get_learning_officer
+from dashboard.dashboard_utils import get_learning_officer, inject_terminal_css
 
 st.set_page_config(page_title="Performance & Learning — AI CFO Platform", page_icon="📚", layout="wide")
+inject_terminal_css()
 st.title("📚 Performance & Learning")
 st.caption("The Chief Learning Officer: persists every report and lets you record realized outcomes.")
 

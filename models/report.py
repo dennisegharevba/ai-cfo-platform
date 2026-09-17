@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 class Bias(str, Enum):
@@ -48,6 +48,23 @@ class AgentReport:
     risks: List[str] = field(default_factory=list)          # what would invalidate/threaten the thesis
     evidence: List[str] = field(default_factory=list)       # plain-language supporting facts
     data_gaps: List[str] = field(default_factory=list)      # datasets that were unusable/blocked
+    # Added alongside the Institutional Fundamental Scoring Engine upgrade
+    # (see docs/ARCHITECTURE_FUNDAMENTAL_SCORING_ENGINE.md) — the full
+    # per-factor breakdown, one models.fundamental_factor.FundamentalFactor
+    # per entry, for departments that compute one. Typed as List[Any]
+    # rather than importing FundamentalFactor directly, since that module
+    # imports Bias/RiskLevel FROM this one — importing it back here would
+    # be circular. Defaults to empty so every existing AgentReport
+    # construction (every department not yet upgraded to the new engine)
+    # keeps working completely unchanged.
+    factor_breakdown: List[Any] = field(default_factory=list)
+    # Added alongside the Institutional Market Regime Filters upgrade (see
+    # docs/ARCHITECTURE_INSTITUTIONAL_MARKET_REGIME.md) — the full
+    # agents.institutional_market_regime.InstitutionalMarketRegime result,
+    # for departments that compute one (Chief Macro Officer). Defaults to
+    # None so every other department's AgentReport construction keeps
+    # working completely unchanged.
+    market_regime: Optional[Any] = None
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def is_degraded(self) -> bool:
@@ -66,6 +83,8 @@ class AgentReport:
             "risks": self.risks,
             "evidence": self.evidence,
             "data_gaps": self.data_gaps,
+            "factor_breakdown": [f.to_dict() for f in self.factor_breakdown],
+            "market_regime": self.market_regime.to_dict() if self.market_regime is not None else None,
             "generated_at": self.generated_at.isoformat(),
         }
 

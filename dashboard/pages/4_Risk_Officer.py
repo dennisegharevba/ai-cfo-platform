@@ -11,13 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import pandas as pd
 import streamlit as st
 
-from dashboard.dashboard_utils import get_manager, risk_badge
+from dashboard.dashboard_utils import get_manager, risk_badge, inject_terminal_css
 from config.settings import MIN_DATA_QUALITY
 from connectors.yahoo_history_connector import YahooHistoryConnector
 from agents.chief_risk_officer import ChiefRiskOfficer
 from models.portfolio import Portfolio, Position
 
 st.set_page_config(page_title="Risk Officer — AI CFO Platform", page_icon="⚖️", layout="wide")
+inject_terminal_css()
 st.title("⚖️ Chief Risk Officer")
 st.caption("Portfolio-level concentration, volatility, VaR, drawdown, and correlation. Never gives a directional view — see docs/ARCHITECTURE_PHASE6.md.")
 

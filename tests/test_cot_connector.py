@@ -1,8 +1,10 @@
+from datetime import date
 from unittest.mock import patch, MagicMock
 
 import pytest
+import requests
 
-from connectors.cot_connector import CotConnector
+from connectors.cot_connector import CotConnector, fetch_cot_history_range
 from core.data_source import DataSourceError
 
 
@@ -76,3 +78,46 @@ def test_validate_shape_requires_nonempty_history():
     }
     assert connector.validate_shape(good_payload) is True
     assert connector.validate_shape(bad_payload_no_history) is False
+
+
+# ---------------------------------------------------------------------- #
+# fetch_cot_history_range — backtesting-only bulk historical fetch
+# (see agents/swing_signal_backtest.py for what uses it)
+# ---------------------------------------------------------------------- #
+
+def test_fetch_history_range_returns_oldest_first_snapshots():
+    rows = [
+        _fake_row("2020-01-07T00:00:00.000", 90000, 82000, 480000),
+        _fake_row("2020-01-14T00:00:00.000", 95000, 82000, 490000),
+    ]
+    with patch("connectors.cot_connector.requests.get", return_value=_mock_response(rows)):
+        history = fetch_cot_history_range("GOLD - COMMODITY EXCHANGE INC.", date(2020, 1, 1), date(2020, 1, 31))
+
+    assert history is not None
+    assert len(history) == 2
+    assert history[0]["report_date"] == "2020-01-07T00:00:00.000"
+    assert history[0]["noncomm_long"] == "90000"
+    assert history[1]["report_date"] == "2020-01-14T00:00:00.000"
+
+
+def test_fetch_history_range_sends_date_range_where_clause_and_ascending_order():
+    rows = [_fake_row("2020-01-07T00:00:00.000", 90000, 82000, 480000)]
+    with patch("connectors.cot_connector.requests.get", return_value=_mock_response(rows)) as mock_get:
+        fetch_cot_history_range("GOLD - COMMODITY EXCHANGE INC.", date(2020, 1, 1), date(2020, 12, 31))
+
+    _, kwargs = mock_get.call_args
+    where = kwargs["params"]["$where"]
+    assert "market_and_exchange_names='GOLD - COMMODITY EXCHANGE INC.'" in where
+    assert "report_date_as_yyyy_mm_dd >= '2020-01-01'" in where
+    assert "report_date_as_yyyy_mm_dd <= '2020-12-31'" in where
+    assert kwargs["params"]["$order"] == "report_date_as_yyyy_mm_dd ASC"
+
+
+def test_fetch_history_range_returns_none_on_empty_rows():
+    with patch("connectors.cot_connector.requests.get", return_value=_mock_response([])):
+        assert fetch_cot_history_range("NONEXISTENT MARKET", date(2020, 1, 1), date(2020, 1, 31)) is None
+
+
+def test_fetch_history_range_returns_none_on_request_failure_never_raises():
+    with patch("connectors.cot_connector.requests.get", side_effect=requests.RequestException("boom")):
+        assert fetch_cot_history_range("GOLD - COMMODITY EXCHANGE INC.", date(2020, 1, 1), date(2020, 1, 31)) is None

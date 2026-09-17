@@ -79,7 +79,26 @@ class ChiefCryptocurrencyAnalyst(BaseAgent):
                     risk_level = RiskLevel.ELEVATED
                     risks.append("Funding rate is extremely negative — a crowded short, vulnerable to a short squeeze")
 
-            oi_score = series_trend_score(ds.payload.get("history", []), lower_is_bullish=False, value_key="open_interest")
+            # normalization_pct: explicitly widened from the 5.0 default,
+            # reasoned proactively (not yet confirmed via a live clamped
+            # run the way agents/chief_macro_officer.py's and
+            # agents/chief_commodity_fundamentals_officer.py's factors
+            # were — see docs/ARCHITECTURE_NORMALIZATION_RECALIBRATION.md)
+            # after finding this call site still relied on the same
+            # uncalibrated default those fixes addressed elsewhere.
+            # Crypto derivatives open interest is well-established (not a
+            # disputed point) to be substantially more volatile than
+            # equity/bond/most commodity data — 10-50%+ swings over a
+            # 30-day window (this connector's fetch limit) are routine,
+            # not extreme, during any period of meaningful crypto market
+            # movement. If a live run shows this is still miscalibrated
+            # in either direction, that's real evidence this reasoned
+            # first-pass estimate should be revisited, the same way the
+            # earlier two recalibrations were driven by live findings.
+            oi_score = series_trend_score(
+                ds.payload.get("history", []), lower_is_bullish=False,
+                value_key="open_interest", normalization_pct=20.0,
+            )
             if oi_score is not None:
                 component_scores.append(oi_score)
                 component_weights.append(WEIGHT_OPEN_INTEREST)

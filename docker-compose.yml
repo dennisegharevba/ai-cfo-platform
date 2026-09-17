@@ -1,0 +1,61 @@
+# AI CFO Platform — docker-compose.
+#
+# Two independent services sharing one image (see Dockerfile):
+#   dashboard      the Streamlit web UI, exposed on port 8501
+#   risk-monitor   scripts/monitor_risk.py --loop, a background process,
+#                  no exposed port
+#
+# SECURITY:
+#   - `env_file: .env` injects secrets as CONTAINER RUNTIME environment
+#     variables. This is fundamentally different from copying .env into
+#     the image (which .dockerignore already prevents) — the values
+#     never become part of any image layer, only the running container's
+#     process environment. .env must exist on the HOST machine you run
+#     `docker compose up` from; it is read at startup, not at build time.
+#   - The dashboard shows real account data once ALPACA credentials are
+#     set. Do NOT expose port 8501 directly to the public internet
+#     without authentication in front of it (see
+#     docs/ARCHITECTURE_CLOUD_DEPLOYMENT.md's reverse-proxy section)
+#     — anyone who finds the URL could otherwise view your real
+#     positions and equity.
+#   - risk-monitor is ACTIVE BY DEFAULT (changed from commented-out —
+#     confirmed working correctly in real, continuous use). It's
+#     read-only (see docs/ARCHITECTURE_RISK_MONITORING.md — nothing it
+#     does can place an order) and sends real Telegram alerts if
+#     TELEGRAM_* is configured. If ALPACA_API_KEY/SECRET are NOT set,
+#     monitor_risk.py exits immediately with a clear message rather than
+#     crash — combined with `restart: unless-stopped`, this means the
+#     container will repeatedly restart (harmless, just noisy in
+#     `docker compose logs`) until real credentials are added to .env.
+#     Comment this service back out if you want the dashboard alone.
+
+#   - PYTHONUNBUFFERED=1 is set on both services. Found necessary via live
+#     testing: without it, `docker compose logs` can show NOTHING for a
+#     running, healthy container — Python buffers stdout differently when
+#     it isn't talking to a real terminal, so print() output can sit
+#     unflushed for a long time (risk-monitor's case is worst: a single
+#     snapshot's few lines of output may not be enough to trigger a
+#     buffer flush on its own, especially with a 300s interval between
+#     snapshots). This forces immediate flushing, matching what anyone
+#     watching `docker compose logs -f` would actually expect to see.
+
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: streamlit run dashboard/Home.py --server.address=0.0.0.0
+    restart: unless-stopped
+
+  risk-monitor:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python scripts/monitor_risk.py --loop --interval-seconds 300
+    restart: unless-stopped

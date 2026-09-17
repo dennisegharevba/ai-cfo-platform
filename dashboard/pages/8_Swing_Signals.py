@@ -25,7 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import streamlit as st
 
 from dashboard.dashboard_utils import get_manager, inject_terminal_css, get_report_store
-from config.settings import NEWS_RSS_URL, MIN_DATA_QUALITY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config.settings import (
+    NEWS_RSS_URL, MIN_DATA_QUALITY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, SWING_SIGNAL_ALERTS_ENABLED,
+)
 from config.watchlist import WATCHLIST_DAILY
 
 from connectors.cot_connector import CotConnector
@@ -45,6 +47,16 @@ st.caption(
     "for the full reasoning, including the one honest limitation: news is broad-market, not per-asset "
     "(this platform has no per-commodity/per-currency news source)."
 )
+
+if not SWING_SIGNAL_ALERTS_ENABLED:
+    st.warning(
+        "Telegram alerts are currently disabled for this feature. A real backtest across three "
+        "independent assets (Gold, EUR/USD, WTI Crude Oil) found a consistent NEGATIVE correlation "
+        "with forward returns and a losing simulated strategy (profit factor under 1.0) on all three "
+        "— see docs/ARCHITECTURE_SWING_SIGNAL.md's \"Backtesting\" section. Signals below are still "
+        "detected and saved normally; only the Telegram send is gated. Set "
+        "SWING_SIGNAL_ALERTS_ENABLED=true once this is resolved."
+    )
 
 store = get_report_store()
 
@@ -134,7 +146,12 @@ else:
             st.caption(caption)
 
             if not s["alert_sent"] and has_creds:
-                if st.button("Send Telegram alert for this signal", key=f"send_swing_{s['id']}"):
+                if not SWING_SIGNAL_ALERTS_ENABLED:
+                    st.caption(
+                        "Telegram alert disabled pending the backtest resolution above "
+                        "(set SWING_SIGNAL_ALERTS_ENABLED=true to re-enable)."
+                    )
+                elif st.button("Send Telegram alert for this signal", key=f"send_swing_{s['id']}"):
                     alerter = TelegramAlerter(bot_token=TELEGRAM_BOT_TOKEN, chat_id=TELEGRAM_CHAT_ID)
                     headline = (
                         f"{emoji} {s['asset_or_theme']}: COT positioning is turning "

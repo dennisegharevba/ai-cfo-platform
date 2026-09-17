@@ -18,8 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import streamlit as st
 
 from dashboard.dashboard_utils import (
-    get_report_store, risk_badge, momentum_badge, trade_health_badge,
+    get_report_store, get_manager, risk_badge, momentum_badge, trade_health_badge, inject_terminal_css,
 )
+from connectors.yahoo_history_connector import YahooHistoryConnector
 from agents.chief_trade_decision_officer import ChiefTradeDecisionOfficer
 from models.open_trade import OpenTrade, TradeDirection
 from models.trade_decision import EXECUTION_RATING_LABELS
@@ -42,6 +43,7 @@ def _risk_label(risk_score_value: float) -> str:
 
 
 st.set_page_config(page_title="Trade Decision Engine — AI CFO Platform", page_icon="🏛️", layout="wide")
+inject_terminal_css()
 st.title("🏛️ Institutional Trade Decision Engine")
 st.caption(
     "Fundamental, Technical, and Risk are scored independently and never collapsed into one number "
@@ -62,11 +64,39 @@ else:
         for r in matching:
             st.markdown(f"- **{r.department}**: {r.bias.value} ({r.bias_score:+.1f}), confidence {r.confidence:.0f}, risk {r.risk_level.value}")
 
+    ticker = st.text_input(
+        "Yahoo Finance ticker for real Technical Score (RSI/MACD/SMA from live price history — "
+        "e.g. GC=F for gold futures, AAPL for Apple). Leave blank to skip Technical scoring.",
+        value="",
+    )
+    if ticker:
+        st.caption(
+            "Technical Score is computed live from price history — RSI 20% + MACD histogram 40% + "
+            "SMA(20/50) trend 40%, the same weighting this platform's now-removed Chief Technical "
+            "Officer department used, rebuilt fresh from real data (not read from any department report)."
+        )
+    else:
+        st.caption("No ticker entered — Technical Score will use the neutral 50/100 default.")
+
     store = get_report_store()
 
     if st.button("Run Chief Trade Decision Officer", type="primary"):
+        price_history = None
+        if ticker:
+            manager = get_manager()
+            price_key = f"PRICE_HISTORY_{ticker}"
+            if not manager.is_registered(price_key):
+                manager.register(price_key, primary=YahooHistoryConnector(ticker, period="6mo", interval="1d"))
+            dataset = manager.get(price_key)
+            if dataset.is_usable():
+                price_history = dataset.payload.get("history", [])
+            else:
+                st.warning(
+                    f"Price history for '{ticker}' isn't usable right now (missing/stale/invalid) — "
+                    f"Technical Score will use the neutral 50/100 default instead of crashing."
+                )
         officer = ChiefTradeDecisionOfficer(report_store=store)
-        st.session_state["last_trade_decision"] = officer.decide(asset, matching)
+        st.session_state["last_trade_decision"] = officer.decide(asset, matching, price_history=price_history)
 
     decision = st.session_state.get("last_trade_decision")
     if decision is not None and decision.asset_or_theme == asset:
@@ -110,9 +140,9 @@ else:
         check_cols = st.columns(4)
         labels = [
             ("Trend alignment", checks.trend_alignment), ("Market structure", checks.market_structure_confirmed),
-            ("Breakout", checks.breakout_confirmed), ("Volume", checks.volume_confirmed),
-            ("Liquidity", checks.liquidity_confirmed), ("Macro alignment", checks.macro_alignment),
-            ("Risk acceptable", checks.risk_acceptable), ("Min. R:R", checks.minimum_rr_achieved),
+            ("Volume", checks.volume_confirmed), ("Liquidity", checks.liquidity_confirmed),
+            ("Macro alignment", checks.macro_alignment), ("Risk acceptable", checks.risk_acceptable),
+            ("Min. R:R", checks.minimum_rr_achieved),
         ]
         for i, (label, passed) in enumerate(labels):
             check_cols[i % 4].markdown(f"{'✅' if passed else '❌'} {label}")

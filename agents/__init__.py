@@ -33,13 +33,16 @@ from .chief_macro_officer import ChiefMacroOfficer
 from .chief_bond_strategist import ChiefBondStrategist
 from .positioning_agent_base import PositioningAgent
 from .chief_commodity_analyst import ChiefCommodityAnalyst
+from .chief_commodity_fundamentals_officer import ChiefCommodityFundamentalsOfficer
 from .chief_fx_analyst import ChiefFXAnalyst
 from .chief_equity_analyst import ChiefEquityAnalyst
 from .chief_cryptocurrency_analyst import ChiefCryptocurrencyAnalyst
 from .chief_sentiment_officer import ChiefSentimentOfficer
 from .portfolio_agent_base import PortfolioAgent
 from .chief_risk_officer import ChiefRiskOfficer
+from .chief_risk_fundamentals_officer import ChiefRiskFundamentalsOfficer
 from .chief_strategy_officer import ChiefStrategyOfficer
+from .chief_seasonality_officer import ChiefSeasonalityOfficer
 from .chief_learning_officer import ChiefLearningOfficer
 from .chief_execution_officer import ChiefExecutionOfficer
 
@@ -49,13 +52,16 @@ __all__ = [
     "ChiefBondStrategist",
     "PositioningAgent",
     "ChiefCommodityAnalyst",
+    "ChiefCommodityFundamentalsOfficer",
     "ChiefFXAnalyst",
     "ChiefEquityAnalyst",
     "ChiefCryptocurrencyAnalyst",
     "ChiefSentimentOfficer",
     "PortfolioAgent",
     "ChiefRiskOfficer",
+    "ChiefRiskFundamentalsOfficer",
     "ChiefStrategyOfficer",
+    "ChiefSeasonalityOfficer",
     "ChiefLearningOfficer",
     "ChiefExecutionOfficer",
 ]

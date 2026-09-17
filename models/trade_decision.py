@@ -80,10 +80,19 @@ class EntryConfirmation:
     explainable by pointing at exactly which requirement(s) failed —
     matching this platform's existing auditability convention (see
     agents/chief_execution_officer.py's blocking_reasons).
+
+    Originally had a separate breakout_confirmed field, removed after
+    live dashboard review found it was always identical to
+    market_structure_confirmed — both were driven by the same MACD/SMA
+    proxy (see agents/trade_scoring.py's build_entry_confirmation()),
+    which meant it added no independent signal and made the checklist
+    look like it had more confirmation than it genuinely did. Removing
+    it doesn't change all_passed()'s actual gating behavior (the two
+    were never possible to disagree), only removes a checklist row that
+    was, in effect, a duplicate of another one.
     """
     trend_alignment: bool = False
     market_structure_confirmed: bool = False
-    breakout_confirmed: bool = False
     volume_confirmed: bool = False
     liquidity_confirmed: bool = False
     macro_alignment: bool = False
@@ -93,7 +102,7 @@ class EntryConfirmation:
 
     def all_passed(self) -> bool:
         return all([
-            self.trend_alignment, self.market_structure_confirmed, self.breakout_confirmed,
+            self.trend_alignment, self.market_structure_confirmed,
             self.volume_confirmed, self.liquidity_confirmed, self.macro_alignment,
             self.risk_acceptable, self.minimum_rr_achieved,
         ])
@@ -102,7 +111,6 @@ class EntryConfirmation:
         checks = {
             "trend_alignment": self.trend_alignment,
             "market_structure_confirmed": self.market_structure_confirmed,
-            "breakout_confirmed": self.breakout_confirmed,
             "volume_confirmed": self.volume_confirmed,
             "liquidity_confirmed": self.liquidity_confirmed,
             "macro_alignment": self.macro_alignment,

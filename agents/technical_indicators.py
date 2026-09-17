@@ -116,6 +116,65 @@ def trend_score(closes: List[float], short: int = 20, long: int = 50, normalizat
     return max(-100.0, min(100.0, (pct_diff / normalization_pct) * 100))
 
 
+def volatility_normalized_trend_score(
+    closes: List[float], annualized_vol_pct: float, short: int = 20, long: int = 50,
+) -> Optional[float]:
+    """
+    Same SMA-crossover-strength measure as trend_score() above, but
+    normalized by the asset's OWN volatility instead of a flat percentage
+    threshold.
+
+    Found via live testing of agents/opportunity_screener.py: trend_score()'s
+    flat 5% threshold structurally favors high-volatility assets when
+    ranking across DIFFERENT asset classes together. A 5% SMA separation is
+    a routine, unremarkable occurrence for a volatile growth stock, but a
+    genuinely rare, significant one for a major FX pair — comparing both
+    against the same flat bar meant a real screener run across equities,
+    commodities, FX, and crypto came back essentially 100% volatile growth
+    stocks, not because those genuinely had the best opportunities, but
+    because the scoring method structurally couldn't score anything else
+    as highly. See docs/ARCHITECTURE_OPPORTUNITY_SCREENER.md for the full
+    account, including the real live output that surfaced this.
+
+    This function instead asks "how large is this move RELATIVE TO WHAT'S
+    NORMAL FOR THIS ASSET" — a move equal to the asset's own typical
+    volatility over a comparable window scores 100, regardless of whether
+    that asset is a calm currency pair or a volatile growth stock, making
+    cross-asset-class comparison genuinely fair rather than structurally
+    biased toward whichever class happens to be more volatile.
+
+    annualized_vol_pct: the asset's own annualized volatility (%) — e.g.
+        from agents.risk_calculations.annualized_volatility() computed on
+        its own recent daily returns. Returns None (not a fabricated
+        score) if this is missing or non-positive — never silently
+        falls back to the flat-normalization behavior instead.
+
+    Deliberately NOT a replacement for trend_score() above — that
+    function is already used and tested elsewhere in this platform
+    (Chief Equity Analyst, the Trade Decision Engine) for single-asset
+    analysis, where cross-asset-class fairness isn't the relevant
+    question; changing its default behavior there wasn't warranted by
+    this finding and risks regressing verified behavior. This is a
+    separate, additive function for where fair ranking ACROSS classes
+    specifically matters.
+    """
+    short_sma = sma(closes, short)
+    long_sma = sma(closes, long)
+    if short_sma is None or long_sma is None or long_sma == 0:
+        return None
+    if annualized_vol_pct is None or annualized_vol_pct <= 0:
+        return None
+
+    pct_diff = (short_sma - long_sma) / abs(long_sma) * 100
+    # Standard time-scaling convention: volatility scales with sqrt(time).
+    # Scales the asset's ANNUAL volatility down to the ~`long`-period
+    # window actually being compared by the SMA crossover above.
+    period_vol_pct = annualized_vol_pct * ((long / 252.0) ** 0.5)
+    if period_vol_pct <= 0:
+        return None
+    return max(-100.0, min(100.0, (pct_diff / period_vol_pct) * 100))
+
+
 def atr(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Optional[float]:
     """
     Average True Range, textbook Wilder definition, in raw price units.
@@ -162,3 +221,62 @@ def atr_expansion_pct(highs: List[float], lows: List[float], closes: List[float]
         return None
 
     return (current - past) / past * 100
+
+
+def volume_confirmation_ratio(volumes_newest_first: List[float], recent_window: int = 5, baseline_window: int = 50) -> Optional[float]:
+    """
+    Compares RECENT average volume against a longer-term baseline average
+    — a real, well-established concept (volume should confirm a genuine
+    price move; classical technical analysis, going back to Dow Theory,
+    treats a move on unusually LOW volume as less reliable than the same
+    move on elevated volume).
+
+    Returns a ratio: recent average volume / baseline average volume.
+    1.0 = exactly average. Above 1.0 = elevated (the move has real volume
+    backing it). Below 1.0 = below-average (the move lacks volume
+    confirmation).
+
+    Returns None — never a fabricated ratio — if there isn't enough
+    volume history, or if the available volume data is unusable (the
+    whole baseline window is 0.0, connectors/yahoo_history_connector.py's
+    own honest signal that this instrument doesn't report usable volume
+    via Yahoo — true for some FX pairs and a few commodities).
+    """
+    if len(volumes_newest_first) < baseline_window:
+        return None
+    baseline_slice = volumes_newest_first[:baseline_window]
+    if all(v == 0.0 for v in baseline_slice):
+        return None
+    baseline_avg = sum(baseline_slice) / len(baseline_slice)
+    if baseline_avg <= 0:
+        return None
+    recent_slice = volumes_newest_first[:recent_window]
+    recent_avg = sum(recent_slice) / len(recent_slice)
+    return recent_avg / baseline_avg
+
+
+def volume_confirmation_multiplier(volume_ratio: Optional[float]) -> float:
+    """
+    Converts a raw volume_confirmation_ratio() into a bounded conviction
+    multiplier, for agents/opportunity_screener.py to apply on top of its
+    existing conviction score.
+
+    No usable volume data -> 1.0, exactly neutral. This is deliberate:
+    penalizing an asset simply for lacking Yahoo-reported volume (common
+    for FX pairs) would repeat, via a different mechanism, the same
+    cross-asset-class fairness mistake already found and fixed for
+    trend_score() earlier in this project (see
+    volatility_normalized_trend_score()'s own docstring) — an asset class
+    must never score worse merely because a data source doesn't cover it.
+
+    Bounded to [0.85, 1.15] so a single unusual volume spike or lull can't
+    dominate or wildly distort the overall conviction score — this is a
+    real, but secondary, confirmation signal, not the primary driver of
+    ranking. Linear within that range: ratio 1.0 (average) -> 1.0
+    (neutral); ratio 2.0 (double average) -> 1.15 (the cap); ratio 0.0
+    (no recent volume at all) -> 0.85 (the floor).
+    """
+    if volume_ratio is None:
+        return 1.0
+    multiplier = 1.0 + 0.15 * (volume_ratio - 1.0)
+    return max(0.85, min(1.15, multiplier))

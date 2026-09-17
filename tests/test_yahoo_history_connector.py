@@ -7,9 +7,12 @@ from connectors.yahoo_history_connector import YahooHistoryConnector
 from core.data_source import DataSourceError
 
 
-def _fake_history_df(closes):
+def _fake_history_df(closes, volumes=None):
     dates = pd.date_range("2026-01-01", periods=len(closes), freq="D")
-    return pd.DataFrame({"Close": closes}, index=dates)
+    data = {"Close": closes}
+    if volumes is not None:
+        data["Volume"] = volumes
+    return pd.DataFrame(data, index=dates)
 
 
 def test_fetch_parses_and_reverses_to_newest_first():
@@ -27,6 +30,49 @@ def test_fetch_parses_and_reverses_to_newest_first():
     assert payload["history"][-1]["close"] == 100.0  # oldest last
     assert len(payload["history"]) == 5
     assert provider_ts is not None
+
+
+def test_fetch_includes_real_volume_when_present():
+    df = _fake_history_df([100.0, 101.0], volumes=[1_000_000, 2_000_000])
+    fake_ticker = MagicMock()
+    fake_ticker.history.return_value = df
+
+    with patch("yfinance.Ticker", return_value=fake_ticker):
+        connector = YahooHistoryConnector("AAPL")
+        payload, _ = connector.fetch()
+
+    assert payload["history"][0]["volume"] == 2_000_000.0  # newest first
+    assert payload["history"][-1]["volume"] == 1_000_000.0
+
+
+def test_fetch_volume_falls_back_to_zero_when_column_missing():
+    """No Volume column at all (some instruments) — must default to 0.0,
+    not crash, and never fabricate a close-derived or guessed value."""
+    df = _fake_history_df([100.0, 101.0])  # no volumes= passed
+    fake_ticker = MagicMock()
+    fake_ticker.history.return_value = df
+
+    with patch("yfinance.Ticker", return_value=fake_ticker):
+        connector = YahooHistoryConnector("EURUSD=X")
+        payload, _ = connector.fetch()
+
+    assert all(row["volume"] == 0.0 for row in payload["history"])
+
+
+def test_fetch_volume_falls_back_to_zero_when_nan():
+    """Some FX pairs report NaN volume via yfinance even when the column
+    exists — must default to 0.0 (a clear 'not usable' signal for
+    callers), never propagate a NaN into downstream scoring."""
+    import math
+    df = _fake_history_df([100.0, 101.0], volumes=[math.nan, math.nan])
+    fake_ticker = MagicMock()
+    fake_ticker.history.return_value = df
+
+    with patch("yfinance.Ticker", return_value=fake_ticker):
+        connector = YahooHistoryConnector("EURUSD=X")
+        payload, _ = connector.fetch()
+
+    assert all(row["volume"] == 0.0 for row in payload["history"])
 
 
 def test_empty_dataframe_raises():

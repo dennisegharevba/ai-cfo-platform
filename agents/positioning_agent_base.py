@@ -1,30 +1,35 @@
 """
 PositioningAgent: shared logic for agents whose signal is CFTC COT
 positioning. Chief Commodity Analyst and Chief FX Analyst are both thin
-subclasses of this for Phase 3 — each just sets `department`.
+subclasses of this — each just sets `department`.
 
-Unlike the Chief Macro Officer / Chief Bond Strategist (Phase 2), these
-agents are instantiated per-market (you construct one ChiefCommodityAnalyst
-per commodity, e.g. Gold, Crude Oil, Corn) since the underlying COT dataset
-key is market-specific.
+Unlike the Chief Macro Officer / Chief Bond Strategist, these agents are
+instantiated per-market (you construct one ChiefCommodityAnalyst per
+commodity, e.g. Gold, Crude Oil, Corn) since the underlying COT dataset key
+is market-specific.
 
-Updated after Phase 3's initial release to blend TWO positioning signals
-rather than only speculative:
-    - Speculative (non-commercial) net position trend, 60% weight —
-      trend-following, useful for momentum/crowd-risk reads
-    - Commercial (producer/hedger) net position trend, 40% weight —
-      reflects real hedging exposure, often read as a structural
-      "smart money" signal
-Both use the same underlying net_position_trend_score function (see
-agents/positioning_scoring.py), just pointed at different fields.
+Per an explicit later decision, Commercial Traders were REMOVED as a
+directional input entirely. Commercial positioning no longer influences
+bias, confidence, or the overall market score — anywhere. Primary emphasis
+is now on Non-Commercial Traders (Large Speculators), on the reasoning
+that they're more representative of trend-following institutional capital
+that drives medium- to long-term price movements. See
+docs/ARCHITECTURE_COMMERCIAL_REMOVAL_FROM_COT.md for the full account.
 
-Updated again to route the relationship between those two signals through
-the Institutional Relationship Engine (agents/institutional_relationship.py)
-rather than a single ad-hoc divergence check: neither commercials nor
-speculators are ever treated as "right" on their own — their agreement or
-disagreement is classified (Full Alignment / Mild Divergence / Strong
-Divergence) and that classification adjusts CONFIDENCE, never the
-direction of the bias score itself, per that module's docstring.
+The bias score is now 100% driven by Non-Commercial (speculative) net
+position trend (agents.positioning_scoring.net_position_trend_score).
+Layered on top, via agents/speculative_positioning_analysis.py:
+    - Weekly (week-over-week) momentum in that same speculative positioning
+    - A percentile rank of the current net position against the fetched
+      history window, flagging positioning extremes
+    - A continuation/reversal classification combining the two
+
+Commercial positioning can still be shown as a purely INFORMATIONAL,
+non-scoring line — gated behind config.settings.ENABLE_COMMERCIAL_POSITIONING_DISPLAY
+(defaults to disabled) — but even when enabled it is computed independently
+and never feeds into bias_score or confidence, matching the explicit
+directive that Commercial data must never influence scores regardless of
+whether it's displayed.
 """
 
 from __future__ import annotations
@@ -36,12 +41,23 @@ from models.report import AgentReport, RiskLevel, bias_from_score
 
 from .base_agent import BaseAgent
 from .positioning_scoring import net_position_trend_score, positioning_extremity_flag
-from .institutional_relationship import (
-    classify_alignment, apply_confidence_adjustment, describe_alignment, AlignmentStatus,
+from .risk_severity import worse_risk_level
+from .speculative_positioning_analysis import (
+    net_positions_series, latest_weekly_change, percentile_rank,
+    classify_extreme_percentile, classify_momentum_signal,
 )
+from config.settings import ENABLE_COMMERCIAL_POSITIONING_DISPLAY
 
-WEIGHT_SPECULATIVE = 60
-WEIGHT_COMMERCIAL = 40
+# Confidence model (single-component: Non-Commercial only).
+BASE_CONFIDENCE = 55.0
+MOMENTUM_CONTINUATION_BONUS = 15.0
+MOMENTUM_REVERSAL_PENALTY = -15.0
+EXTREME_PERCENTILE_PENALTY = -10.0
+
+_EXTREME_LABEL_TEXT = {
+    "extreme_bullish": "an extreme bullish reading",
+    "extreme_bearish": "an extreme bearish reading",
+}
 
 
 class PositioningAgent(BaseAgent):
@@ -65,83 +81,107 @@ class PositioningAgent(BaseAgent):
         risks: List[str] = []
         risk_level = RiskLevel.MODERATE
 
-        component_scores: List[float] = []
-        component_weights: List[float] = []
         spec_trend = None
-        comm_trend = None
+        confidence = 0.0
 
         if ds is not None:
             history = ds.payload.get("history", [])
 
             spec_trend = net_position_trend_score(history, long_key="noncomm_long", short_key="noncomm_short")
+            weekly_change = latest_weekly_change(history)
+            pct = percentile_rank(history)
+            nets = net_positions_series(history)
+            current_net = nets[0] if nets else None
+            extreme_label = classify_extreme_percentile(pct)
+            momentum_signal = classify_momentum_signal(spec_trend, weekly_change, current_net)
+
             if spec_trend is not None:
-                component_scores.append(spec_trend)
-                component_weights.append(WEIGHT_SPECULATIVE)
                 direction = (
                     "building net length" if spec_trend > 0
                     else "reducing length / building shorts" if spec_trend < 0
                     else "roughly unchanged"
                 )
                 evidence.append(
-                    f"Speculators have been {direction} in {asset_or_theme} "
-                    f"positioning over the last {len(history)} COT reports "
+                    f"Non-Commercial (large speculator) positioning has been {direction} in "
+                    f"{asset_or_theme} over the last {len(history)} COT reports "
                     f"(latest report date: {ds.payload.get('report_date')})"
                 )
                 if spec_trend > 0:
-                    catalysts.append("Building speculative length reflects growing bullish conviction")
+                    catalysts.append("Building Non-Commercial length reflects growing bullish conviction")
                 elif spec_trend < 0:
-                    risks.append("Speculators reducing length or adding shorts signals waning bullish conviction")
+                    risks.append("Non-Commercial traders reducing length or adding shorts signals waning bullish conviction")
 
-            comm_trend = net_position_trend_score(history, long_key="comm_long", short_key="comm_short")
-            if comm_trend is not None:
-                component_scores.append(comm_trend)
-                component_weights.append(WEIGHT_COMMERCIAL)
-                direction = (
-                    "building net length" if comm_trend > 0
-                    else "reducing length / building shorts" if comm_trend < 0
-                    else "roughly unchanged"
-                )
-                evidence.append(f"Commercials (hedgers) have been {direction} over the same window")
-                if comm_trend > 0:
-                    catalysts.append("Commercial hedgers building net length is a constructive structural signal")
-                elif comm_trend < 0:
-                    risks.append("Commercial hedgers reducing net length is a cautionary structural signal")
+                confidence = BASE_CONFIDENCE
 
-            # --- Institutional Relationship Engine: classify agreement/
-            # disagreement between commercials and speculators, and let
-            # that classification adjust confidence (never the direction). ---
-            alignment_status = classify_alignment(spec_trend, comm_trend)
-            if alignment_status is not None:
-                description = describe_alignment(alignment_status)
-                evidence.append(description["evidence"])
-                if description["risk"]:
-                    risks.append(description["risk"])
-                if description["catalyst"]:
-                    catalysts.append(description["catalyst"])
-                if alignment_status == AlignmentStatus.STRONG_DIVERGENCE:
-                    risk_level = RiskLevel.ELEVATED
+                if weekly_change is not None:
+                    wdir = "increasing" if weekly_change > 0 else "decreasing" if weekly_change < 0 else "unchanged"
+                    evidence.append(
+                        f"Non-Commercial net position changed by {weekly_change:+,.0f} contracts over the "
+                        f"past week ({wdir})"
+                    )
 
-            if not component_scores:
-                risks.append("Insufficient COT history to compute a positioning trend")
+                if pct is not None:
+                    extreme_text = _EXTREME_LABEL_TEXT.get(extreme_label, "within a normal range for this window")
+                    evidence.append(
+                        f"Current Non-Commercial net position is at the {pct:.0f}th percentile of the last "
+                        f"{len(nets)} COT reports ({extreme_text}) — this measures where TODAY's position sits "
+                        f"within its own recent range, a separate question from the overall multi-week TREND "
+                        f"reported above; the two can genuinely disagree (e.g. a severe multi-week reversal "
+                        f"that hasn't yet pushed the position to a new extreme within this specific window)"
+                    )
+                    if extreme_label is not None:
+                        risks.append(
+                            f"Non-Commercial positioning shows {extreme_text} relative to its own recent "
+                            f"history — elevated risk of a positioning-driven reversal"
+                        )
+                        confidence += EXTREME_PERCENTILE_PENALTY
+
+                if momentum_signal == "continuation":
+                    catalysts.append("Weekly Non-Commercial positioning change confirms the broader multi-week trend")
+                    confidence += MOMENTUM_CONTINUATION_BONUS
+                elif momentum_signal == "reversal_watch":
+                    risks.append(
+                        "Weekly Non-Commercial positioning change is moving opposite the broader multi-week "
+                        "trend — a potential early trend-reversal signal"
+                    )
+                    confidence += MOMENTUM_REVERSAL_PENALTY
+
+                if extreme_label is not None and momentum_signal == "reversal_watch":
+                    risk_level = worse_risk_level(risk_level, RiskLevel.ELEVATED)
+
+                confidence = max(0.0, min(100.0, confidence))
+            else:
+                risks.append("Insufficient COT history to compute a Non-Commercial positioning trend")
 
             extremity = positioning_extremity_flag(ds.payload)
             if extremity == "crowded_long":
-                risk_level = RiskLevel.ELEVATED
-                risks.append("Net speculative positioning is a crowded long — vulnerable to a sharp reversal")
+                risk_level = worse_risk_level(risk_level, RiskLevel.ELEVATED)
+                risks.append("Net Non-Commercial positioning is a crowded long — vulnerable to a sharp reversal")
             elif extremity == "crowded_short":
-                risk_level = RiskLevel.ELEVATED
-                risks.append("Net speculative positioning is a crowded short — vulnerable to a short-covering rally")
+                risk_level = worse_risk_level(risk_level, RiskLevel.ELEVATED)
+                risks.append("Net Non-Commercial positioning is a crowded short — vulnerable to a short-covering rally")
 
-        if component_scores:
-            total_weight = sum(component_weights)
-            bias_score = sum(s * w for s, w in zip(component_scores, component_weights)) / total_weight
-            confidence = 40.0 + (30.0 * len(component_scores))  # 40 base, +30 per component (max 100 with both)
-            confidence = apply_confidence_adjustment(confidence, alignment_status)
-        else:
-            bias_score = 0.0
-            confidence = 0.0
+            # --- Optional, informational-only Commercial display ---
+            # Gated behind a config flag that defaults to OFF. Even when
+            # enabled, this is computed independently and NEVER folded into
+            # bias_score or confidence above — see module docstring and
+            # docs/ARCHITECTURE_COMMERCIAL_REMOVAL_FROM_COT.md.
+            if ENABLE_COMMERCIAL_POSITIONING_DISPLAY:
+                comm_trend = net_position_trend_score(history, long_key="comm_long", short_key="comm_short")
+                if comm_trend is not None:
+                    comm_direction = (
+                        "building net length" if comm_trend > 0
+                        else "reducing length / building shorts" if comm_trend < 0
+                        else "roughly unchanged"
+                    )
+                    evidence.append(
+                        f"[Informational only, not used in scoring] Commercial (hedger) positioning has "
+                        f"been {comm_direction} over the same window"
+                    )
 
-        if ds is None or confidence == 0.0:
+        bias_score = spec_trend if spec_trend is not None else 0.0
+
+        if confidence == 0.0:
             risk_level = RiskLevel.HIGH
 
         return AgentReport(

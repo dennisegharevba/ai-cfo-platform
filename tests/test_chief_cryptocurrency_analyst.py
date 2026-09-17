@@ -67,3 +67,19 @@ def test_missing_crypto_data_yields_high_risk_zero_confidence():
     assert report.confidence == 0.0
     assert report.risk_level == RiskLevel.HIGH
     assert report.is_degraded() is True
+
+
+def test_open_interest_normalization_widened_beyond_the_uncalibrated_default():
+    """
+    Proactive fix (not yet confirmed via a live clamped run the way the
+    Macro/Commodity Fundamentals recalibrations were — see
+    docs/ARCHITECTURE_NORMALIZATION_RECALIBRATION.md): this call site was
+    found still relying on the same uncalibrated 5.0 default. Crypto
+    open interest is well-established to be far more volatile than that.
+    Proven directly: an 8% open-interest move — comfortably clamping
+    territory under the old 5.0 default — no longer clamps at the new
+    20.0 threshold.
+    """
+    manager = _manager_with(funding_rate=0.0, oi_values=[1000, 1040, 1080])  # 8% rise
+    report = ChiefCryptocurrencyAnalyst(manager, crypto_key="CRYPTO_BTC").analyze("BTC")
+    assert abs(report.bias_score) < 100.0

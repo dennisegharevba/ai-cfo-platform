@@ -1,6 +1,8 @@
+import random
 from datetime import datetime, timedelta, timezone
 
 from agents.swing_signal import build_swing_signal, should_send_swing_alert
+from agents.positioning_scoring import net_position_trend_score
 from models.swing_signal import SwingDirection, NewsAlignment
 
 
@@ -126,3 +128,47 @@ def test_should_alert_again_after_a_full_week_has_passed():
     long_ago = now - timedelta(days=10)
     last_alerted = {"recorded_at": long_ago.isoformat()}
     assert should_send_swing_alert(last_alerted, now=now) is True
+
+
+# --- fade hypothesis: documents a real, provable structural relationship ---
+# See docs/ARCHITECTURE_SWING_SIGNAL.md's "the redundancy suspicion is
+# proven, not just plausible" section. A fired signal only exists on a
+# "reversal_watch" (agents.speculative_positioning_analysis.classify_momentum_signal),
+# which by definition requires weekly_change's sign to disagree with
+# trend_score's sign. build_swing_signal()'s direction is the sign of
+# weekly_change, so NEGATING it (as scripts/run_swing_signal_backtest.py's
+# --fade does) always lands on trend_score's sign -- which is EXACTLY
+# agents.positioning_agent_base.py's own bias_score for that same market,
+# same day (see that module: `bias_score = spec_trend`). This means a
+# "faded Swing Signal" carries no directional information beyond what the
+# Chief Commodity/FX Analyst's bias_score already shows. This test pins
+# that relationship down so it stays a documented, intentional fact rather
+# than something that could silently break if either function changes.
+def test_faded_direction_matches_trend_score_sign():
+    random.seed(0)
+
+    def random_history(n=8):
+        net = random.uniform(-50000, 50000)
+        nets = [net]
+        for _ in range(n - 1):
+            net += random.uniform(-20000, 20000)
+            nets.append(net)
+        base = 100000
+        return [_row(base + net / 2, base - net / 2) for net in nets]  # index 0 = newest
+
+    fired = 0
+    for _ in range(2000):
+        history = random_history()
+        signal = build_swing_signal("TEST", history)
+        if signal is None:
+            continue
+        fired += 1
+        trend = net_position_trend_score(history)
+        faded_is_bullish = signal.direction == SwingDirection.BEARISH_TURN  # negating the direction = fading
+        assert faded_is_bullish == (trend > 0), (
+            "Fading a fired Swing Signal must always match trend_score's sign -- if this ever fails, "
+            "either build_swing_signal()'s reversal detection or its direction assignment changed in a "
+            "way that breaks the structural relationship documented in docs/ARCHITECTURE_SWING_SIGNAL.md."
+        )
+
+    assert fired > 100, "Too few signals fired in this random sample to be a meaningful check -- widen random_history() or the trial count."

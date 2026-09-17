@@ -11,17 +11,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import streamlit as st
 
-from dashboard.dashboard_utils import risk_badge, bias_badge
+from dashboard.dashboard_utils import risk_badge, bias_badge, inject_terminal_css, render_bias_gauge
 from agents.chief_strategy_officer import ChiefStrategyOfficer
 from agents.institutional_relationship import (
     ExecutionReadiness, EXECUTION_READINESS_BADGES, EXECUTION_READINESS_LABELS,
 )
 
 st.set_page_config(page_title="Strategy Synthesis — AI CFO Platform", page_icon="🧭", layout="wide")
+inject_terminal_css()
 st.title("🧭 Strategy Synthesis")
 st.caption("The Chief Strategy Officer resolves every department report into one institutional outlook.")
 
 reports = st.session_state.get("last_agent_reports", [])
+
+# Risk-type reports make a "how risky," not "which direction," claim (see
+# agents/chief_strategy_officer.py's synthesize() docstring) — they must
+# be routed through the risk_reports parameter, never folded into the
+# directional bias average. This mirrors the same split
+# scripts/run_daily_cycle.py's run_cycle() already does correctly; this
+# dashboard page previously did NOT make this split (a real bug — every
+# report was passed into the single directional `reports` parameter,
+# meaning a Chief Risk Fundamentals Officer "low volatility" reading could
+# silently pull the overall bullish/bearish bias around).
+RISK_TYPE_DEPARTMENTS = {"Chief Risk Officer", "Chief Risk Fundamentals Officer"}
 
 if not reports:
     st.info("No department reports in this session yet — go to **Department Reports** and run a few first.")
@@ -29,14 +41,20 @@ else:
     asset_names = sorted(set(r.asset_or_theme for r in reports))
     asset = st.selectbox("Synthesize reports for", asset_names)
     matching = [r for r in reports if r.asset_or_theme == asset]
+    directional_matching = [r for r in matching if r.department not in RISK_TYPE_DEPARTMENTS]
+    risk_matching = [r for r in matching if r.department in RISK_TYPE_DEPARTMENTS]
 
-    st.caption(f"{len(matching)} report(s) will be synthesized for **{asset}**.")
+    st.caption(
+        f"{len(directional_matching)} directional report(s) + {len(risk_matching)} risk report(s) "
+        f"will be synthesized for **{asset}**."
+    )
     for r in matching:
-        st.markdown(f"- **{r.department}**: {r.bias.value} ({r.bias_score:+.1f}), confidence {r.confidence:.0f}, risk {r.risk_level.value}")
+        role = " (risk — confirms/warns, never shifts direction)" if r.department in RISK_TYPE_DEPARTMENTS else ""
+        st.markdown(f"- **{r.department}**{role}: {r.bias.value} ({r.bias_score:+.1f}), confidence {r.confidence:.0f}, risk {r.risk_level.value}")
 
     if st.button("Run Chief Strategy Officer", type="primary"):
         officer = ChiefStrategyOfficer()
-        result = officer.synthesize(asset, matching)
+        result = officer.synthesize(asset, directional_matching, risk_reports=risk_matching)
         st.session_state["last_strategy_report"] = result
 
     result = st.session_state.get("last_strategy_report")
@@ -47,6 +65,7 @@ else:
         col2.metric("Confidence Score", f"{result.confidence_score:.0f}/100")
         col3.markdown(f"**Risk Level**\n\n{risk_badge(result.risk_level.value)}")
         col4.markdown(f"**Directional Bias**\n\n{bias_badge(result.bias.value)}")
+        render_bias_gauge(result.bias_score, width=700)
 
         if result.execution_readiness:
             try:
@@ -60,6 +79,28 @@ else:
         if result.institutional_commentary:
             st.subheader("Institutional Commentary")
             st.markdown(result.institutional_commentary)
+
+        if result.decision_explanation:
+            with st.expander("Explain This Decision", expanded=False):
+                st.markdown(result.decision_explanation)
+
+        if result.committee_table:
+            st.subheader("Final Investment Committee")
+            import pandas as pd
+            table_rows = [
+                {
+                    "Factor": row["department"],
+                    "Bias": row["bias"].replace("_", " ").title(),
+                    "Weight": f"{row['weight_pct']:.0f}%",
+                    "Confidence": f"{row['confidence']:.0f}%",
+                }
+                for row in result.committee_table
+            ]
+            st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Final Market Score", f"{result.overall_market_score:.0f}/100")
+            c2.metric("Confidence", f"{result.confidence_score:.0f}%")
+            c3.markdown(f"**Recommendation**\n\n{result.committee_recommendation}")
 
         st.subheader("Trade Thesis")
         st.markdown(result.trade_thesis)

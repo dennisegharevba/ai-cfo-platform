@@ -36,12 +36,34 @@ class TelegramAlerter:
 
         try:
             resp = requests.post(url, json=payload, timeout=self.timeout)
-            resp.raise_for_status()
-            data = resp.json()
         except requests.RequestException as exc:
             raise TelegramError(f"Telegram sendMessage request failed: {exc}") from exc
-        except ValueError as exc:
-            raise TelegramError(f"Telegram returned invalid JSON: {exc}") from exc
+
+        # Telegram's Bot API returns a JSON body with a real, actionable
+        # "description" field EVEN on 4xx/5xx HTTP status codes (e.g.
+        # "Bad Request: chat not found" vs "Bad Request: can't parse
+        # entities: character '-' is reserved and must be escaped").
+        # Reading the body BEFORE checking resp.ok — rather than calling
+        # resp.raise_for_status() immediately, which discards the body —
+        # is what makes that real description available. Found via live
+        # testing: without this fix, every HTTP-level failure showed only
+        # a bare "400 Client Error: Bad Request for url: ..." with the
+        # actual reason completely invisible, making it impossible to
+        # tell a bad chat_id apart from a message-formatting problem.
+        try:
+            data = resp.json()
+        except ValueError:
+            data = None
+
+        if not resp.ok:
+            if data and "description" in data:
+                raise TelegramError(f"Telegram API rejected the message: {data['description']}")
+            raise TelegramError(
+                f"Telegram sendMessage request failed: {resp.status_code} {resp.reason} for url: {resp.url}"
+            )
+
+        if data is None:
+            raise TelegramError("Telegram returned invalid JSON")
 
         if not data.get("ok", False):
             raise TelegramError(f"Telegram API rejected the message: {data.get('description', 'unknown error')}")

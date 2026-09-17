@@ -18,26 +18,6 @@ class FakeNewsSource(DataSource):
         return payload, datetime.now(timezone.utc)
 
 
-class FakeCotSource(DataSource):
-    name = "FAKE_COT"
-    default_ttl_seconds = 300
-
-    def __init__(self, weekly_rows):
-        self.weekly_rows = weekly_rows  # list of (long, short, oi), newest first order desired
-
-    def fetch(self, **kwargs):
-        history = [
-            {"report_date": f"2026-06-{i+1:02d}", "noncomm_long": str(l), "noncomm_short": str(s), "open_interest": str(oi)}
-            for i, (l, s, oi) in enumerate(self.weekly_rows)
-        ]
-        payload = {
-            "market": "TEST", "report_date": history[0]["report_date"],
-            "noncomm_long": history[0]["noncomm_long"], "noncomm_short": history[0]["noncomm_short"],
-            "open_interest": history[0]["open_interest"], "history": history,
-        }
-        return payload, datetime.now(timezone.utc)
-
-
 def test_bullish_news_only_gives_bullish_bias():
     manager = DataIntegrityManager(min_quality_threshold=50)
     manager.register("NEWS", primary=FakeNewsSource([
@@ -45,7 +25,7 @@ def test_bullish_news_only_gives_bullish_bias():
     ]))
     report = ChiefSentimentOfficer(manager, news_key="NEWS").analyze("Market Sentiment")
     assert report.bias in (Bias.BULLISH, Bias.STRONGLY_BULLISH)
-    assert report.confidence == 55.0  # 30 base + 25 for one component
+    assert report.confidence == 55.0
 
 
 def test_bearish_news_only_gives_bearish_bias():
@@ -57,25 +37,6 @@ def test_bearish_news_only_gives_bearish_bias():
     assert report.bias in (Bias.BEARISH, Bias.STRONGLY_BEARISH)
 
 
-def test_news_plus_cot_blend_both_components():
-    manager = DataIntegrityManager(min_quality_threshold=50)
-    manager.register("NEWS", primary=FakeNewsSource(["Stocks rally to record high"]))
-    manager.register("COT_GOLD", primary=FakeCotSource([(120000, 80000, 500000), (95000, 82000, 480000)]))
-    report = ChiefSentimentOfficer(manager, news_key="NEWS", cot_key="COT_GOLD").analyze("Gold Sentiment")
-    assert report.bias in (Bias.BULLISH, Bias.STRONGLY_BULLISH)
-    assert report.confidence == 80.0  # 30 + 25*2 components
-    assert len(report.evidence) == 2
-
-
-def test_crowded_cot_positioning_elevates_risk():
-    manager = DataIntegrityManager(min_quality_threshold=50)
-    manager.register("NEWS", primary=FakeNewsSource(["Markets steady today"]))
-    manager.register("COT_GOLD", primary=FakeCotSource([(300000, 50000, 500000), (300000, 50000, 500000)]))
-    report = ChiefSentimentOfficer(manager, news_key="NEWS", cot_key="COT_GOLD").analyze("Gold Sentiment")
-    assert report.risk_level == RiskLevel.ELEVATED
-    assert any("crowded long" in r.lower() for r in report.risks)
-
-
 def test_missing_news_data_yields_high_risk_zero_confidence():
     manager = DataIntegrityManager(min_quality_threshold=50)
     agent = ChiefSentimentOfficer(manager, news_key="NEWS")
@@ -85,11 +46,47 @@ def test_missing_news_data_yields_high_risk_zero_confidence():
     assert report.is_degraded() is True
 
 
-def test_missing_optional_cot_still_produces_news_only_report():
+def test_no_cot_parameter_accepted_anymore():
+    """
+    Regression test for the deliberate restructuring (see
+    docs/ARCHITECTURE_POSITIONING_SEPARATION.md): Chief Sentiment Officer
+    no longer accepts a cot_key at all — institutional (COT) positioning
+    is exclusively Chief Commodity/FX Analyst's job now, never re-blended
+    into a second "sentiment" score under a different name.
+    """
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    try:
+        ChiefSentimentOfficer(manager, news_key="NEWS", cot_key="COT_GOLD")
+        assert False, "cot_key should no longer be an accepted parameter"
+    except TypeError:
+        pass
+
+
+def test_factor_breakdown_populated_for_news_only():
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    manager.register("MARKET_NEWS", primary=FakeNewsSource(
+        ["Stocks surge on strong earnings", "Markets rally as growth beats expectations"]
+    ))
+    report = ChiefSentimentOfficer(manager, news_key="MARKET_NEWS").analyze("Broad Market")
+    assert len(report.factor_breakdown) == 1
+    factor = report.factor_breakdown[0]
+    assert factor.name == "News Headline Sentiment"
+    assert factor.category == "Sentiment"
+    assert factor.forecast_value is None
+
+
+def test_factor_breakdown_never_includes_a_positioning_factor():
+    """Since the COT blend was removed entirely, factor_breakdown should
+    never contain anything but the News Headline Sentiment factor —
+    positioning data belongs to Chief Commodity/FX Analyst exclusively now."""
     manager = DataIntegrityManager(min_quality_threshold=50)
     manager.register("NEWS", primary=FakeNewsSource(["Stocks rally to record high"]))
-    # COT_GOLD never registered
-    report = ChiefSentimentOfficer(manager, news_key="NEWS", cot_key="COT_GOLD").analyze("Gold Sentiment")
-    assert report.bias in (Bias.BULLISH, Bias.STRONGLY_BULLISH)
-    assert report.is_degraded() is True
-    assert any("COT_GOLD" in gap for gap in report.data_gaps)
+    report = ChiefSentimentOfficer(manager, news_key="NEWS").analyze("Gold Sentiment")
+    names = {f.name for f in report.factor_breakdown}
+    assert "Speculative Positioning (Crowd Sentiment)" not in names
+
+
+def test_factor_breakdown_empty_when_no_data():
+    manager = DataIntegrityManager(min_quality_threshold=50)
+    report = ChiefSentimentOfficer(manager, news_key="MARKET_NEWS").analyze("Broad Market")
+    assert report.factor_breakdown == []

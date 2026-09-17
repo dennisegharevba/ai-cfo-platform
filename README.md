@@ -1582,3 +1582,37 @@ per-currency news source. Full account in
 [`docs/ARCHITECTURE_SWING_SIGNAL.md`](docs/ARCHITECTURE_SWING_SIGNAL.md).
 
 **832 passing tests total.**
+
+## Update: Swing Signal is now backtestable
+
+Swing Signal shipped without ever being validated against real historical
+data — its confidence-model constants (`NEWS_CONFIRMS_BONUS`,
+`EXTREME_PERCENTILE_BONUS`, etc.) were reasoned by symmetry with the
+position-trading side, not derived from what actually happened to price
+after a real COT reversal. Closed that gap by wiring it into this
+platform's existing signal-validation infrastructure rather than building
+a new one: `connectors/cot_connector.py` gained `fetch_cot_history_range()`
+(a bulk multi-year historical fetch — the live connector only ever
+fetches the most recent handful of weeks, deliberately), and
+`agents/swing_signal_backtest.py` walks that history week by week,
+reusing `build_swing_signal()` completely unmodified, recording a signal
+only on the weeks it actually fires. That output plugs directly into both
+`agents/backtest_engine.py` (correlation vs. forward returns) and
+`agents/strategy_backtest.py` (simulated trades — win rate, profit
+factor, Sharpe/Sortino) with no changes to either engine.
+
+This closes a gap `agents/backtest_signals.py`'s own docstring had
+explicitly flagged as deferred ("COT-based Commodity/FX Analyst — would
+need extending connectors/cot_connector.py... but it's unbuilt").
+
+Honest limitation, inherited and unavoidable: every backtested signal is
+COT-only — there's no historical news headline archive on this platform,
+so a backtested signal is always scored as if news were unavailable
+(base confidence, no bonus/penalty). This validates the COT-reversal
+mechanism alone, a real but narrower question than the live feature asks.
+Run `python scripts/run_swing_signal_backtest.py --asset Gold` (needs
+real network access — CFTC + Yahoo Finance) for an actual answer. Full
+account in
+[`docs/ARCHITECTURE_SWING_SIGNAL.md`](docs/ARCHITECTURE_SWING_SIGNAL.md#backtesting--has-this-actually-been-validated-against-real-history).
+
+**843 passing tests total.**

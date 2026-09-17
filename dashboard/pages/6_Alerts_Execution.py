@@ -13,11 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import streamlit as st
 
 from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from dashboard.dashboard_utils import inject_terminal_css
 from models.report import RiskLevel
 from agents.chief_execution_officer import ChiefExecutionOfficer
 from telegram.telegram_alerter import TelegramAlerter, TelegramError
 
 st.set_page_config(page_title="Alerts & Execution — AI CFO Platform", page_icon="🚨", layout="wide")
+inject_terminal_css()
 st.title("🚨 Alerts & Execution")
 st.caption("The Chief Execution Officer: gates on confidence, bias strength, risk, and data coverage before ever alerting.")
 

@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.settings import (
     FRED_API_KEY, SEC_USER_AGENT, NEWS_RSS_URL, MIN_DATA_QUALITY, EIA_API_KEY,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, LOG_LEVEL,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, LOG_LEVEL, SWING_SIGNAL_ALERTS_ENABLED,
 )
 from config.watchlist import WATCHLIST_DAILY, WATCHLIST_WEEKLY
 
@@ -333,6 +333,14 @@ def _scan_for_swing_signals(
     and skipped, never aborts the rest of the scan — the same "never let
     one problem take down the whole system" principle used throughout
     this cycle.
+
+    The actual Telegram SEND is additionally gated by
+    config.settings.SWING_SIGNAL_ALERTS_ENABLED (default False — see that
+    flag's docstring for why: a real backtest found a consistently losing
+    result across three assets). Detection and persistence are NOT gated
+    by it — signals still show up on the dashboard and keep accumulating
+    real data either way; only whether a Telegram message actually goes
+    out is controlled by the flag.
     """
     now = datetime.now(timezone.utc)
     for asset, cot_key in cot_entries:
@@ -347,12 +355,19 @@ def _scan_for_swing_signals(
 
             last_alerted = learning_officer.store.get_latest_alerted_swing_signal(asset, signal.direction.value)
             alert_sent = False
-            if should_send_swing_alert(last_alerted, now) and execution_officer.alerter is not None:
+            would_alert = should_send_swing_alert(last_alerted, now) and execution_officer.alerter is not None
+            if would_alert and SWING_SIGNAL_ALERTS_ENABLED:
                 try:
                     execution_officer.alerter.send_message(signal.headline())
                     alert_sent = True
                 except TelegramError as exc:
                     logger.error("Swing alert failed to send for '%s': %s", asset, exc)
+            elif would_alert:
+                logger.info(
+                    "Swing alert for '%s' (%s) would have fired but SWING_SIGNAL_ALERTS_ENABLED is "
+                    "false -- suppressed. See docs/ARCHITECTURE_SWING_SIGNAL.md's backtest results.",
+                    asset, signal.direction.value,
+                )
 
             learning_officer.store.save_swing_signal(signal, alert_sent=alert_sent)
             logger.info(

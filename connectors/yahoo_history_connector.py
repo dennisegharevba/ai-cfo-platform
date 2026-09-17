@@ -48,16 +48,22 @@ class YahooHistoryConnector(DataSource):
 
         # yfinance returns rows oldest-first with a DatetimeIndex; convert to
         # this platform's newest-first convention.
-        # high/low are included (additive, backward-compatible with any
-        # existing consumer that only reads "close") so ATR and weekend-gap
-        # detection (Institutional Trade Decision Engine, risk score) have
-        # what they need without a second fetch.
+        # high/low/volume are included (additive, backward-compatible with
+        # any existing consumer that only reads "close") so ATR and
+        # weekend-gap detection (Institutional Trade Decision Engine, risk
+        # score) and volume-based scoring have what they need without a
+        # second fetch. volume falls back to 0.0, not close/a fabricated
+        # value, when yfinance doesn't report it for an instrument (some FX
+        # pairs and a few commodities report unreliable or no volume via
+        # Yahoo) — callers must treat 0.0 as "not usable data", never as a
+        # genuine zero-volume day.
         history = [
             {
                 "date": idx.isoformat(),
                 "close": float(row["Close"]),
                 "high": float(row["High"]) if "High" in df.columns else float(row["Close"]),
                 "low": float(row["Low"]) if "Low" in df.columns else float(row["Close"]),
+                "volume": float(row["Volume"]) if "Volume" in df.columns and row["Volume"] == row["Volume"] else 0.0,
             }
             for idx, row in df.iterrows()
         ]

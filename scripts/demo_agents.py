@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config.settings import FRED_API_KEY, MIN_DATA_QUALITY, LOG_LEVEL
 from connectors.fred_connector import FredConnector
 from core.refresh_manager import DataIntegrityManager
-from agents.chief_macro_officer import ChiefMacroOfficer, KEY_CPI, KEY_UNRATE
+from agents.chief_macro_officer import ChiefMacroOfficer, register_macro_data_sources
 from agents.chief_bond_strategist import ChiefBondStrategist, KEY_DGS10, KEY_DGS2
 
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -31,6 +31,14 @@ def print_report(report):
     print(f"  Bias:        {report.bias.value}  (score: {report.bias_score:+.1f})")
     print(f"  Confidence:  {report.confidence:.1f}/100")
     print(f"  Risk level:  {report.risk_level.value}")
+    if report.factor_breakdown:
+        print(f"  Factor breakdown ({len(report.factor_breakdown)} factors):")
+        for f in report.factor_breakdown:
+            print(
+                f"    - {f.name:<45} {f.bias.value:<8} score={f.score:+6.1f}  "
+                f"weight={f.importance_weight:>4.1f}/10  confidence={f.confidence:.0f}  "
+                f"current={f.current_value}  source={f.source}"
+            )
     if report.evidence:
         print("  Evidence:")
         for e in report.evidence:
@@ -52,10 +60,9 @@ def print_report(report):
 def main():
     manager = DataIntegrityManager(min_quality_threshold=MIN_DATA_QUALITY)
 
-    manager.register(KEY_CPI, primary=FredConnector(series_id="CPIAUCSL", api_key=FRED_API_KEY))
-    manager.register(KEY_UNRATE, primary=FredConnector(series_id="UNRATE", api_key=FRED_API_KEY))
     manager.register(KEY_DGS10, primary=FredConnector(series_id="DGS10", api_key=FRED_API_KEY))
     manager.register(KEY_DGS2, primary=FredConnector(series_id="DGS2", api_key=FRED_API_KEY))
+    register_macro_data_sources(manager, fred_api_key=FRED_API_KEY)  # all 16 Macro factors — see agents/chief_macro_officer.py
 
     print("\n=== AI CFO Platform — Phase 2: Chief Macro Officer + Chief Bond Strategist demo ===")
 

@@ -16,7 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import streamlit as st
 import pandas as pd
 
-from dashboard.dashboard_utils import get_manager
+from datetime import datetime, timedelta, timezone
+
+from dashboard.dashboard_utils import get_manager, inject_terminal_css
 from config.settings import FRED_API_KEY, SEC_USER_AGENT, NEWS_RSS_URL
 from connectors.fred_connector import FredConnector
 from connectors.cot_connector import CotConnector
@@ -25,8 +27,10 @@ from connectors.yahoo_history_connector import YahooHistoryConnector
 from connectors.sec_edgar_connector import SecEdgarConnector
 from connectors.binance_connector import BinanceFuturesConnector
 from connectors.news_connector import NewsRssConnector
+from agents.release_schedule import most_recent_cot_release_datetime, next_cot_release_datetime, is_new_cot_release_available
 
 st.set_page_config(page_title="Data Health — AI CFO Platform", page_icon="🩺", layout="wide")
+inject_terminal_css()
 st.title("🩺 Data Health")
 st.caption("Live status from the Data Integrity & Refresh Manager (Phase 1).")
 
@@ -55,6 +59,34 @@ if st.button("🔄 Refresh all data sources now", type="primary"):
     st.success("Refresh complete.")
 
 status = manager.status_report()
+
+st.subheader("📅 COT Release Schedule")
+st.caption(
+    "The CFTC publishes real COT data weekly, every Friday at 3:30pm ET — not on a rolling "
+    "timer from whenever it was last fetched. This checks the actual schedule directly "
+    "(see docs/ARCHITECTURE_COT_RELEASE_SCHEDULE.md), rather than the flat 7-day TTL alone, "
+    "which can drift out of alignment with the real release day over time."
+)
+now = datetime.now(timezone.utc)
+most_recent_release = most_recent_cot_release_datetime(now)
+next_release = next_cot_release_datetime(now)
+sched_col1, sched_col2 = st.columns(2)
+sched_col1.metric("Most recent real release", most_recent_release.strftime("%a %b %d, %-I:%M%p ET"))
+sched_col2.metric("Next expected release", next_release.strftime("%a %b %d, %-I:%M%p ET"))
+
+cot_entry = next((e for e in status if e["name"] == "COT_GOLD"), None)
+if cot_entry is not None:
+    last_fetched_at = now - timedelta(seconds=cot_entry["age_seconds"])
+    if is_new_cot_release_available(last_fetched_at, now):
+        st.warning(
+            "A new COT report has been published since COT_GOLD was last fetched — click "
+            "**Refresh all data sources now** below to get the current release, rather than "
+            "waiting for the flat weekly timer to expire on its own."
+        )
+    else:
+        st.success("COT_GOLD reflects the most recent real release — no newer report has been published yet.")
+
+st.divider()
 
 if not status:
     st.info("No datasets fetched yet this session — click **Refresh all data sources now** above.")

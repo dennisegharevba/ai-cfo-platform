@@ -1,21 +1,33 @@
 """
 Institutional Relationship Engine.
 
-Implements the upgrade requested on top of Phase 3's Chief Commodity/FX
-Analyst blend: Commercial Hedgers and Large Speculators are never forced
-to "pick a winner." Instead their relationship is classified, and that
-classification adjusts confidence rather than direction — commercial and
-speculative positioning both continue to feed the bias score exactly as
-they did before (see agents/positioning_agent_base.py), but the
-RELATIONSHIP between them now has its own explicit effect on how much to
-trust that bias.
+Originally implemented an upgrade on top of the Chief Commodity/FX
+Analyst's commercial+speculative blend: Commercial Hedgers and Large
+Speculators were never forced to "pick a winner" — instead their
+relationship was classified (Full Alignment / Mild Divergence / Strong
+Divergence), and that classification adjusted confidence rather than
+direction.
 
-Three concepts live here, used by two different agents:
+STATUS UPDATE: per a later, explicit decision, Commercial Traders were
+removed as a directional input to the Chief Commodity/FX Analyst
+ENTIRELY (see docs/ARCHITECTURE_COMMERCIAL_REMOVAL_FROM_COT.md) — that
+agent no longer blends commercial data into its bias/confidence at all,
+so it no longer has anything to classify an "alignment" between. The
+`AlignmentStatus` / `classify_alignment` / `apply_confidence_adjustment` /
+`describe_alignment` functions below are consequently NOT CALLED anywhere
+in the platform's active pipeline anymore — they're kept (not deleted)
+because they're generic, independently tested, reusable positioning-
+relationship logic that could be wired up again for a different pair of
+signals later, but treat them as orphaned utilities, not part of the
+current scoring path. `ExecutionReadiness` / `classify_execution_readiness`
+/ `build_institutional_commentary` below remain ACTIVE and are still used
+by `agents/chief_strategy_officer.py`.
+
+Three concepts live here:
     - AlignmentStatus / classify_alignment / apply_confidence_adjustment
-      — used by agents/positioning_agent_base.py (Chief Commodity/FX
-      Analyst), where commercial vs. speculative agreement/disagreement
-      is computed.
-    - ExecutionReadiness / classify_execution_readiness — used by
+      / describe_alignment — ORPHANED (see status update above). Formerly
+      used by agents/positioning_agent_base.py.
+    - ExecutionReadiness / classify_execution_readiness — ACTIVE, used by
       agents/chief_strategy_officer.py to classify how ready a synthesized
       bias is to act on, based on confidence and risk. Originally also
       gated on whether a Chief Technical Officer report confirmed the

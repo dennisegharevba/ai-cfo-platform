@@ -1,77 +1,93 @@
 """
 Chief Sentiment Officer.
 
-Phase 5 scope:
+Per an explicit later restructuring (see
+docs/ARCHITECTURE_POSITIONING_SEPARATION.md): institutional desks do not
+treat "sentiment" as one blended concept — retail positioning, options
+positioning, institutional (COT) positioning, volatility, ETF flows,
+market breadth, and news are all DIFFERENT phenomena that should be shown
+separately, never averaged into one score, since doing so can hide real
+divergences between them.
 
-    - News headline sentiment (primary signal, 100% weight alone, 60% if a
-      COT crowd-positioning signal is also supplied) via NewsRssConnector +
-      agents.sentiment_scoring.news_sentiment_score
-    - Optional: speculative positioning trend, reusing
-      agents.positioning_scoring.net_position_trend_score / 
-      positioning_extremity_flag from Phase 3 — this is the SAME underlying
-      COT dataset the Chief Commodity/FX Analyst reads for a given market,
-      just interpreted through a "crowd sentiment" lens here rather than a
-      pure directional-bias lens. Reusing the dataset key (not re-fetching)
-      means registering the same COT connector once and pointing multiple
-      agents at it — the DataIntegrityManager's caching makes this free.
+This agent's earlier design blended News Headline Sentiment with an
+OPTIONAL reinterpretation of COT positioning data as "crowd sentiment" —
+the same COT dataset Chief Commodity/FX Analyst already reads for a
+market, re-read here through a different lens. That blend has been
+REMOVED. Chief Sentiment Officer is now purely News Analytics: real RSS
+headline sentiment via NewsRssConnector + agents.sentiment_scoring.news_sentiment_score,
+nothing else. Institutional (COT) positioning remains fully covered —
+just through Chief Commodity Analyst / Chief FX Analyst, its own
+dedicated department, never re-blended into a second "sentiment" number
+under a different name.
 
-Per the full spec's sentiment coverage (Fear & Greed, ETF/fund flows,
-Put/Call ratio, options positioning, retail vs institutional sentiment),
-those are natural additional weighted components for a later phase.
+HONEST SCOPE — per the same restructuring, several categories from a
+full institutional "Positioning & Market Internals" view have no free
+structured live source this platform integrates and are NOT modeled —
+not stubbed, not faked, simply absent, the same honest-scope rule applied
+everywhere else in this platform:
+    - Retail Positioning (OANDA/IG/Myfxbook/FXSSI broker ratios) — all
+      proprietary broker feeds; none confirmed free without a funded
+      trading account.
+    - Options Positioning (Put/Call ratio, options open interest) — no
+      documented free API.
+    - ETF Flows — SPDR and others publish holdings on their own sites,
+      but not through a stable documented free API; would require
+      scraping, which this platform doesn't do.
+    - MOVE / GVZ / OVX volatility indices — not confirmed to be freely
+      available via FRED or any other source this platform integrates
+      (VIX itself IS free via FRED and is covered separately — see
+      agents/institutional_market_regime.py).
+Market Breadth (advance/decline, % above moving averages) IS covered —
+see agents/market_breadth.py — computed from the platform's own already-
+fetched large-cap equity price history, not a new data source.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from core.dataset import Dataset
 from models.report import AgentReport, RiskLevel, bias_from_score
+from models.fundamental_factor import FundamentalFactor, factor_bias_from_score
 
 from .base_agent import BaseAgent
-from .positioning_scoring import net_position_trend_score, positioning_extremity_flag
 from .sentiment_scoring import news_sentiment_score
 
-WEIGHT_NEWS_ALONE = 100
-WEIGHT_NEWS_WITH_COT = 60
-WEIGHT_COT = 40
+CATEGORY = "Sentiment"
+
+# Base confidence for a computable news-sentiment read — deliberately
+# modest (not a high-confidence primary driver), matching this platform's
+# own convention of keeping Sentiment a supporting signal, not a primary one.
+NEWS_CONFIDENCE = 55.0
 
 
 class ChiefSentimentOfficer(BaseAgent):
     department = "Chief Sentiment Officer"
 
-    def __init__(self, manager, news_key: str, cot_key: Optional[str] = None, min_quality: float = 60.0):
-        """
-        news_key: the key the news RSS dataset was registered under.
-        cot_key: optional — if provided, this market's COT dataset key
-        (typically the same one a Chief Commodity/FX Analyst already reads)
-        is blended in as a secondary crowd-positioning sentiment signal.
-        """
+    def __init__(self, manager, news_key: str, min_quality: float = 60.0):
+        """news_key: the key the news RSS dataset was registered under."""
         super().__init__(manager, min_quality)
         self.news_key = news_key
-        self.cot_key = cot_key
 
     def required_dataset_keys(self) -> List[str]:
-        keys = [self.news_key]
-        if self.cot_key:
-            keys.append(self.cot_key)
-        return keys
+        return [self.news_key]
 
     def _build_report(self, usable: Dict[str, Dataset], asset_or_theme: str) -> AgentReport:
         evidence: List[str] = []
         catalysts: List[str] = []
         risks: List[str] = []
-        component_scores: List[float] = []
-        component_weights: List[float] = []
-        risk_level = RiskLevel.MODERATE
-
-        news_weight = WEIGHT_NEWS_WITH_COT if self.cot_key else WEIGHT_NEWS_ALONE
+        factors: List[FundamentalFactor] = []
+        bias_score = 0.0
+        confidence = 0.0
+        risk_level = RiskLevel.HIGH
 
         news_ds = usable.get(self.news_key)
         if news_ds is not None:
             score = news_sentiment_score(news_ds.payload.get("headlines", []))
             if score is not None:
-                component_scores.append(score)
-                component_weights.append(news_weight)
+                bias_score = score
+                confidence = NEWS_CONFIDENCE
+                risk_level = RiskLevel.MODERATE
                 direction = "bullish" if score > 10 else "bearish" if score < -10 else "mixed/neutral"
                 evidence.append(
                     f"News sentiment across {news_ds.payload.get('count')} headlines skews "
@@ -81,41 +97,17 @@ class ChiefSentimentOfficer(BaseAgent):
                     catalysts.append("Prevailing news flow is constructive")
                 elif score < -10:
                     risks.append("Prevailing news flow is negative")
-
-        if self.cot_key:
-            cot_ds = usable.get(self.cot_key)
-            if cot_ds is not None:
-                history = cot_ds.payload.get("history", [])
-                trend = net_position_trend_score(history)
-                if trend is not None:
-                    component_scores.append(trend)
-                    component_weights.append(WEIGHT_COT)
-                    direction = "bullish" if trend > 0 else "bearish" if trend < 0 else "neutral"
-                    evidence.append(f"Speculative positioning trend adds a {direction} sentiment tilt")
-
-                extremity = positioning_extremity_flag(cot_ds.payload)
-                if extremity in ("crowded_long", "crowded_short"):
-                    risk_level = RiskLevel.ELEVATED
-                    risks.append(
-                        f"Positioning is a {extremity.replace('_', ' ')} — crowd sentiment is stretched "
-                        f"and vulnerable to a reversal"
-                    )
-
-        if component_scores:
-            total_weight = sum(component_weights)
-            bias_score = sum(s * w for s, w in zip(component_scores, component_weights)) / total_weight
-        else:
-            bias_score = 0.0
-
-        confidence = 30.0 + (25.0 * len(component_scores))  # 30 base, +25 per usable component (max 80)
-        if not usable:
-            risk_level = RiskLevel.HIGH
-            confidence = 0.0
-        elif not component_scores:
-            risk_level = RiskLevel.HIGH
-            confidence = 0.0
-        elif len(usable) < len(self.required_dataset_keys()):
-            confidence = max(0.0, confidence - 15.0)
+                factors.append(FundamentalFactor(
+                    name="News Headline Sentiment",
+                    category=CATEGORY,
+                    score=round(score, 1),
+                    bias=factor_bias_from_score(score),
+                    importance_weight=10.0,
+                    confidence=NEWS_CONFIDENCE,
+                    source=news_ds.source,
+                    last_updated=news_ds.provider_timestamp or news_ds.time_collected,
+                    notes=[f"{news_ds.payload.get('count')} headlines analyzed"],
+                ))
 
         return AgentReport(
             department=self.department,
@@ -128,4 +120,5 @@ class ChiefSentimentOfficer(BaseAgent):
             risks=risks,
             evidence=evidence,
             data_gaps=[],
+            factor_breakdown=factors,
         )

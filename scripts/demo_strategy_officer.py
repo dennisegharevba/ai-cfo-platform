@@ -61,11 +61,11 @@ def main():
         ),
         _report(
             "Chief Commodity Analyst", bias_score=70, confidence=70, risk_level=RiskLevel.ELEVATED,
-            catalysts=["Building speculative length reflects growing bullish conviction"],
-            risks=["Net speculative positioning is a crowded long — vulnerable to a sharp reversal"],
+            catalysts=["Building Non-Commercial length reflects growing bullish conviction"],
+            risks=["Net Non-Commercial positioning is a crowded long — vulnerable to a sharp reversal"],
             evidence=[
-                "Institutional Divergence: long-term value (commercials) and current momentum "
-                "(speculators) disagree moderately.",
+                "Non-Commercial (large speculator) positioning has been building net length in Gold "
+                "over the last 8 COT reports",
             ],
         ),
         _report(
@@ -97,6 +97,17 @@ def main():
         print(f"Excluded departments:     {', '.join(result.excluded_departments)}")
 
     print(f"\nInstitutional Commentary:\n  {result.institutional_commentary}")
+
+    print(f"\nExplain This Decision:\n  {result.decision_explanation}")
+
+    print("\n=== Final Investment Committee ===")
+    print(f"  {'Factor':<40} {'Bias':<18} {'Weight':>8} {'Confidence':>12}")
+    for row in result.committee_table:
+        print(f"  {row['department']:<40} {row['bias'].replace('_', ' ').title():<18} {row['weight_pct']:>7.0f}% {row['confidence']:>11.0f}%")
+    print(f"\n  Final Market Score: {result.overall_market_score:.0f}/100")
+    print(f"  Confidence:         {result.confidence_score:.0f}%")
+    print(f"  Overall Bias:       {result.bias.value.replace('_', ' ').title()}")
+    print(f"  Recommendation:     {result.committee_recommendation}")
 
     print(f"\nTrade Thesis:\n  {result.trade_thesis}")
 

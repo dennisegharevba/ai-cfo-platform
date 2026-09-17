@@ -130,3 +130,13 @@ proper three-state classification (Full Alignment / Mild Divergence /
 Strong Divergence) plus an adaptive confidence adjustment and an
 Execution Readiness tier computed at the Chief Strategy Officer level —
 see that document for the full design.
+
+## Final update: see docs/ARCHITECTURE_COMMERCIAL_REMOVAL_FROM_COT.md
+
+Per an explicit later decision, Commercial Traders were removed as a
+directional input entirely — the commercial+speculative blend and
+alignment classification described in this document and in
+`docs/ARCHITECTURE_INSTITUTIONAL_RELATIONSHIP_ENGINE.md` no longer run by
+default. `bias_score` is now 100% driven by Non-Commercial (speculative)
+positioning alone, with new weekly-momentum and percentile-extreme
+analysis added in its place. See that document for the full account.

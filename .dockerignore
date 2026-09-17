@@ -1,0 +1,27 @@
+# CRITICAL: .env must never be baked into the image. Secrets are
+# injected at container runtime via docker-compose (see Dockerfile's
+# and docker-compose.yml's own comments on why). .env.example is fine
+# to include — it has no real values.
+.env
+.env.*
+!.env.example
+
+# Databases hold real (paper) trade/report history — local dev state,
+# not something to ship inside the image.
+*.db
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+.git/
+.gitignore
+
+# Editor/OS cruft
+.vscode/
+.idea/
+.DS_Store
+
+# Never relevant inside a container
+/venv/
+/.venv/

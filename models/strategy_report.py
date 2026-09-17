@@ -40,6 +40,17 @@ class StrategyReport:
     # them keeps working unchanged.
     execution_readiness: str = ""        # one of agents.institutional_relationship.ExecutionReadiness values
     institutional_commentary: str = ""   # deterministic "why" paragraph
+    # Added alongside the "Explain Every Decision" upgrade — see
+    # docs/ARCHITECTURE_DECISION_EXPLANATION.md. Defaults to "" so any
+    # existing code constructing a StrategyReport without it keeps
+    # working unchanged.
+    decision_explanation: str = ""       # per-factor why/influence/conflict/risk/invalidation breakdown
+    # Added alongside the "Final Investment Committee" table upgrade —
+    # see docs/ARCHITECTURE_INVESTMENT_COMMITTEE_TABLE.md. Both default to
+    # "safe, empty" values so any existing code constructing a
+    # StrategyReport without them keeps working unchanged.
+    committee_table: List[dict] = field(default_factory=list)  # one row per contributing department: {department, bias, weight_pct, confidence}
+    committee_recommendation: str = ""    # a plain research stance label (e.g. "Long (research view)") — NEVER a trade instruction; this platform never places trades
     generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -59,5 +70,8 @@ class StrategyReport:
             "excluded_departments": self.excluded_departments,
             "execution_readiness": self.execution_readiness,
             "institutional_commentary": self.institutional_commentary,
+            "decision_explanation": self.decision_explanation,
+            "committee_table": self.committee_table,
+            "committee_recommendation": self.committee_recommendation,
             "generated_at": self.generated_at.isoformat(),
         }

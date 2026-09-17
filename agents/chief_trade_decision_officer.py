@@ -46,17 +46,46 @@ class ChiefTradeDecisionOfficer:
         """
         self.report_store = report_store
 
-    def decide(self, asset_or_theme: str, reports: List[AgentReport], current_price: Optional[float] = None) -> TradeDecision:
-        technical_report = next(
-            (r for r in reports if r.department == trade_scoring.TECHNICAL_DEPARTMENT), None,
-        )
+    def decide(
+        self, asset_or_theme: str, reports: List[AgentReport],
+        current_price: Optional[float] = None, price_history: Optional[List[dict]] = None,
+    ) -> TradeDecision:
+        """
+        price_history: optional newest-first price history (same shape
+        connectors.yahoo_history_connector.YahooHistoryConnector returns).
+        When provided, Technical Score is computed for real from RSI/MACD/
+        SMA trend (agents.trade_scoring.technical_score_from_price_history)
+        — this is the RECOMMENDED path, since no report can ever be named
+        "Chief Technical Officer" anymore (that department was removed
+        from the platform's main pipeline; see
+        docs/ARCHITECTURE_TECHNICAL_OFFICER_REMOVAL.md). When omitted,
+        falls back to the legacy department-name lookup below, which will
+        always find nothing and return a neutral default — kept only for
+        backward compatibility with any caller/test that still constructs
+        a fake report under that exact name.
+        """
+        if price_history is not None:
+            technical_report = trade_scoring.build_synthetic_technical_report(price_history)
+            tech_score, tech_contrib, tech_excluded = trade_scoring.technical_score_from_price_history(price_history)
+        else:
+            technical_report = next(
+                (r for r in reports if r.department == trade_scoring.TECHNICAL_DEPARTMENT), None,
+            )
+            tech_score, tech_contrib, tech_excluded = trade_scoring.technical_score(technical_report)
 
         fund_score, fund_contrib, fund_excluded = trade_scoring.fundamental_score(reports)
-        tech_score, tech_contrib, tech_excluded = trade_scoring.technical_score(technical_report)
         risk_score_value, risk_contrib, risk_excluded = trade_scoring.risk_score(reports)
         overall = trade_scoring.overall_score(fund_score, tech_score, risk_score_value)
 
-        entry_confirmation = trade_scoring.build_entry_confirmation(technical_report, fund_score, risk_score_value)
+        volumes_newest_first = None
+        if price_history is not None:
+            volumes_newest_first = [row.get("volume", 0.0) for row in price_history if "volume" in row]
+            if not volumes_newest_first:
+                volumes_newest_first = None  # no rows had volume at all -- let build_entry_confirmation fall back to its proxy, not a fabricated empty list
+
+        entry_confirmation = trade_scoring.build_entry_confirmation(
+            technical_report, fund_score, risk_score_value, volumes_newest_first=volumes_newest_first,
+        )
         rating = trade_scoring.execution_rating(fund_score, tech_score, risk_score_value, entry_confirmation)
         grade = trade_scoring.trade_grade(overall, fund_score, tech_score, risk_score_value)
 
@@ -66,9 +95,29 @@ class ChiefTradeDecisionOfficer:
         catalysts = list(dict.fromkeys(c for r in reports for c in r.catalysts))[:8]
         risks = list(dict.fromkeys(r2 for r in reports for r2 in r.risks))[:8]
 
-        fund_momentum = self._momentum(asset_or_theme, "fundamental_score", fund_score, catalysts, risks)
-        tech_momentum = self._momentum(asset_or_theme, "technical_score", tech_score, catalysts, risks)
-        risk_momentum = self._momentum(asset_or_theme, "risk_score", risk_score_value, catalysts, risks)
+        # Component-specific catalysts/risks for each score's OWN momentum
+        # explanation — found via live testing that Fundamental, Technical,
+        # Risk, and Overall momentum were all showing the IDENTICAL "why"
+        # text, because all four were being fed the same merged overall
+        # `catalysts`/`risks` above. A Technical score weakening should be
+        # explained by RSI/MACD/trend factors, not by COT positioning data
+        # that's actually a Fundamental signal. Filtering `reports` by
+        # each component's own contributing departments (already computed
+        # above) gives a genuinely component-specific explanation; the
+        # synthetic technical_report (built from real price history, not
+        # one of `reports`) supplies its own for Technical. Overall
+        # legitimately keeps using the full merged list, since "why did
+        # the OVERALL score move" is reasonably explained by everything.
+        fund_catalysts = list(dict.fromkeys(c for r in reports if r.department in fund_contrib for c in r.catalysts))[:8]
+        fund_risks = list(dict.fromkeys(r2 for r in reports if r.department in fund_contrib for r2 in r.risks))[:8]
+        tech_catalysts = list(technical_report.catalysts)[:8] if technical_report else []
+        tech_risks = list(technical_report.risks)[:8] if technical_report else []
+        risk_catalysts = list(dict.fromkeys(c for r in reports if r.department in risk_contrib for c in r.catalysts))[:8]
+        risk_risks = list(dict.fromkeys(r2 for r in reports if r.department in risk_contrib for r2 in r.risks))[:8]
+
+        fund_momentum = self._momentum(asset_or_theme, "fundamental_score", fund_score, fund_catalysts, fund_risks)
+        tech_momentum = self._momentum(asset_or_theme, "technical_score", tech_score, tech_catalysts, tech_risks)
+        risk_momentum = self._momentum(asset_or_theme, "risk_score", risk_score_value, risk_catalysts, risk_risks)
         overall_momentum = self._momentum(asset_or_theme, "overall_score", overall, catalysts, risks)
 
         trade_health, conviction = self._lifecycle(

@@ -98,3 +98,100 @@ def test_no_open_trade_reports_not_open():
     reports = [_macro(), _confirmed_technical()]
     decision = officer.decide("Gold", reports)
     assert decision.trade_health == TradeHealth.NOT_OPEN
+
+
+# --- price_history: the real technical-scoring path ---
+
+def _realistic_uptrend_history(n=60):
+    import math
+    return list(reversed([
+        {"close": 100 + i * 1.2 + math.sin(i * 0.5) * 2, "date": f"2026-01-{(i % 28) + 1:02d}"}
+        for i in range(n)
+    ]))
+
+
+def _realistic_downtrend_history(n=60):
+    import math
+    return list(reversed([
+        {"close": 300 - i * 1.2 + math.sin(i * 0.5) * 2, "date": f"2026-01-{(i % 28) + 1:02d}"}
+        for i in range(n)
+    ]))
+
+
+def test_decide_uses_real_technical_score_when_price_history_provided():
+    """
+    Regression test: decide() previously ALWAYS looked for a report named
+    'Chief Technical Officer' — a department that was permanently deleted
+    from the platform's main pipeline, meaning Technical Score was
+    silently stuck at the neutral 50.0 default forever. Proven directly:
+    with real price_history supplied, the technical score should NOT be
+    exactly 50.0 (the old, permanently-broken default) for a genuine
+    trending price series.
+    """
+    store = ReportStore(":memory:")
+    officer = ChiefTradeDecisionOfficer(report_store=store)
+    reports = [_macro(bias_score=60)]
+    decision = officer.decide("Gold", reports, price_history=_realistic_uptrend_history())
+    assert decision.technical_score != 50.0
+    assert decision.technical_score > 50.0  # a real uptrend should score bullish
+
+
+def test_decide_without_price_history_falls_back_to_legacy_neutral_default():
+    """The old behavior (no price_history, no matching department report)
+    is preserved exactly, for backward compatibility."""
+    store = ReportStore(":memory:")
+    officer = ChiefTradeDecisionOfficer(report_store=store)
+    reports = [_macro(bias_score=60)]
+    decision = officer.decide("Gold", reports)  # no price_history
+    assert decision.technical_score == 50.0
+
+
+def test_decide_with_price_history_populates_real_entry_confirmation():
+    """The synthetic technical report built from price_history should
+    genuinely drive entry_confirmation, not leave it stuck in the
+    'no usable technical report' fallback path."""
+    store = ReportStore(":memory:")
+    officer = ChiefTradeDecisionOfficer(report_store=store)
+    reports = [_macro(bias_score=60)]
+    decision = officer.decide("Gold", reports, price_history=_realistic_uptrend_history())
+    assert decision.entry_confirmation.trend_alignment is True
+
+
+def test_momentum_explanations_are_component_specific_not_all_identical():
+    """
+    Regression test for a real bug found via live testing: Fundamental,
+    Technical, Risk, and Overall momentum explanations were all showing
+    the EXACT SAME "why" text, because all four were fed the same merged
+    overall catalysts/risks list — meaning a genuinely FUNDAMENTAL signal
+    (COT positioning) was being shown as the "why" for the TECHNICAL
+    score's movement too, which is actively misleading (Technical Score
+    is computed purely from RSI/MACD/SMA price data and has nothing to do
+    with COT positioning).
+
+    Proven directly: a Fundamental-only risk ("crowded long COT
+    positioning") and a Technical-only risk (from the real synthetic
+    technical report, built from a genuine downtrend) must NOT bleed into
+    each other's momentum explanation once both scores have weakened
+    enough to have one.
+    """
+    store = ReportStore(":memory:")
+    officer = ChiefTradeDecisionOfficer(report_store=store)
+
+    fundamental_only_risk = "Non-Commercial positioning shows an extreme bullish reading — crowded long"
+    reports = [_macro(bias_score=80, risks=[fundamental_only_risk])]
+
+    # First run: establish a baseline (insufficient history -> no explanation yet).
+    officer.decide("Gold", reports, price_history=_realistic_uptrend_history())
+
+    # Second run: fundamental and technical both move enough to weaken.
+    weaker_reports = [_macro(bias_score=20, risks=[fundamental_only_risk])]
+    decision = officer.decide("Gold", weaker_reports, price_history=_realistic_downtrend_history())
+
+    if decision.fundamental_momentum.explanation:
+        assert fundamental_only_risk in decision.fundamental_momentum.explanation
+        # The Fundamental-only risk must NOT appear in Technical's explanation.
+        assert fundamental_only_risk not in decision.technical_momentum.explanation
+    if decision.technical_momentum.explanation:
+        # Technical's own explanation should come from the real synthetic
+        # technical report (RSI/MACD/SMA-based text), not the COT risk.
+        assert all(fundamental_only_risk != item for item in decision.technical_momentum.explanation)

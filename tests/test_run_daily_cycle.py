@@ -342,6 +342,10 @@ def test_no_swing_signal_on_continuation(monkeypatch):
 
 
 def test_swing_signal_triggers_telegram_alert_when_configured(monkeypatch):
+    # SWING_SIGNAL_ALERTS_ENABLED defaults to False (see config/settings.py —
+    # the feature's own negative backtest); this test explicitly opts in to
+    # exercise the send path itself, separately from that default.
+    monkeypatch.setattr("scripts.run_daily_cycle.SWING_SIGNAL_ALERTS_ENABLED", True)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
 
@@ -368,10 +372,45 @@ def test_swing_signal_triggers_telegram_alert_when_configured(monkeypatch):
     assert signals[0]["alert_sent"] is True
 
 
+def test_swing_alert_suppressed_by_default_pending_backtest_resolution(monkeypatch):
+    """SWING_SIGNAL_ALERTS_ENABLED defaults to False given the feature's own
+    negative backtest (docs/ARCHITECTURE_SWING_SIGNAL.md) — a signal that
+    would otherwise alert must still be DETECTED and PERSISTED (so the
+    dashboard and database keep accumulating real data), but no Telegram
+    message should actually go out, and alert_sent must be False."""
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
+
+    sent_messages = []
+
+    class FakeAlerter:
+        def send_message(self, text, parse_mode="Markdown"):
+            sent_messages.append(text)
+            return {"ok": True}
+
+    watchlist = [
+        {"asset_or_theme": "Broad Market Sentiment", "departments": {"sentiment": {}}},
+        {"asset_or_theme": "Gold", "departments": {"commodity": {"cot_market": "GOLD"}}},
+    ]
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=FakeAlerter())
+
+    run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
+
+    assert sent_messages == []
+    signals = learning_officer.store.get_swing_signals(asset_or_theme="Gold")
+    assert len(signals) == 1
+    assert signals[0]["alert_sent"] is False
+
+
 def test_swing_signal_not_re_alerted_within_the_same_cot_release_week(monkeypatch):
     """Running the cycle twice in a row (simulating two consecutive
     weekday scheduled runs against the same still-unrevised COT release)
-    should only alert once — see agents.swing_signal.should_send_swing_alert."""
+    should only alert once — see agents.swing_signal.should_send_swing_alert.
+    Alerts are explicitly enabled here (see the default-off test above for
+    the current real default)."""
+    monkeypatch.setattr("scripts.run_daily_cycle.SWING_SIGNAL_ALERTS_ENABLED", True)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
 

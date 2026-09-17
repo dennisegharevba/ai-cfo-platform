@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.settings import MIN_DATA_QUALITY, LOG_LEVEL, SEC_USER_AGENT
-from connectors.sec_edgar_connector import SecEdgarConnector
+from connectors.sec_edgar_connector import SecEdgarConnector, REVENUE_FALLBACK_CONCEPTS
 from connectors.binance_connector import BinanceFuturesConnector
 from core.refresh_manager import DataIntegrityManager
 from agents.chief_equity_analyst import ChiefEquityAnalyst
@@ -58,7 +58,10 @@ def main():
     )
     manager.register(
         "AAPL_REVENUE",
-        primary=SecEdgarConnector(cik="320193", concept="Revenues", user_agent=SEC_USER_AGENT),
+        primary=SecEdgarConnector(
+            cik="320193", concept="Revenues", user_agent=SEC_USER_AGENT,
+            fallback_concepts=REVENUE_FALLBACK_CONCEPTS,
+        ),
     )
     manager.register("CRYPTO_BTC", primary=BinanceFuturesConnector("BTCUSDT", history_limit=30))
 
