@@ -19,6 +19,7 @@ import streamlit as st
 
 from dashboard.dashboard_utils import (
     get_report_store, get_manager, risk_badge, momentum_badge, trade_health_badge, inject_terminal_css,
+    with_broad_context,
 )
 from connectors.yahoo_history_connector import YahooHistoryConnector
 from agents.chief_trade_decision_officer import ChiefTradeDecisionOfficer
@@ -57,9 +58,12 @@ if not reports:
 else:
     asset_names = sorted(set(r.asset_or_theme for r in reports))
     asset = st.selectbox("Run the Trade Decision Engine for", asset_names)
-    matching = [r for r in reports if r.asset_or_theme == asset]
+    matching = with_broad_context(reports, [r for r in reports if r.asset_or_theme == asset])
 
-    st.caption(f"{len(matching)} report(s) available for **{asset}**.")
+    st.caption(
+        f"{len(matching)} report(s) available for **{asset}** — including the platform's broad "
+        f"Macro/Sentiment reads when they've been run this session, not just {asset}-specific departments."
+    )
     with st.expander("Contributing department reports", expanded=False):
         for r in matching:
             st.markdown(f"- **{r.department}**: {r.bias.value} ({r.bias_score:+.1f}), confidence {r.confidence:.0f}, risk {r.risk_level.value}")

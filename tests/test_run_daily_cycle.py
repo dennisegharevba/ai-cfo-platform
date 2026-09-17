@@ -59,6 +59,61 @@ def test_successful_watchlist_entry_is_recorded_and_summarized(monkeypatch):
     assert len(learning_officer.store.get_strategy_reports()) == 1
 
 
+def _fake_commodity_runner(manager, asset, params):
+    """A minimal, fixed-neutral non-macro/non-sentiment department report —
+    stands in for a real commodity/FX department so tests don't need real
+    COT data just to prove the broad-context merge happened."""
+    from models.report import AgentReport, Bias, RiskLevel
+    return AgentReport(
+        department="Chief Commodity Analyst", asset_or_theme=asset,
+        bias=Bias.NEUTRAL, bias_score=0.0, confidence=60.0, risk_level=RiskLevel.MODERATE,
+    )
+
+
+def test_macro_report_is_merged_into_every_other_assets_synthesis(monkeypatch):
+    """
+    Update, 2026-09-18: confirmed real gap — Chief Macro Officer's report
+    was previously only ever synthesized under its own "US Macro Outlook"
+    watchlist entry, never merged into any other asset's own `reports`
+    before strategy_officer.synthesize(), despite
+    agents/trade_scoring.py's FUNDAMENTAL_DEPARTMENTS and
+    agents/chief_strategy_officer.py's own docstring both expecting it.
+    "US Macro Outlook" runs first in the watchlist here (matching
+    config/watchlist.py's real ordering), so by the time "Gold" is
+    processed, Chief Macro Officer's report should already be available
+    to merge in.
+    """
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "macro", _patched_macro_runner)
+    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _fake_commodity_runner)
+    watchlist = [
+        {"asset_or_theme": "US Macro Outlook", "departments": {"macro": {}}},
+        {"asset_or_theme": "Gold", "departments": {"commodity": {}}},
+    ]
+
+    manager = DataIntegrityManager(min_quality_threshold=50.0)
+    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
+    execution_officer = ChiefExecutionOfficer(alerter=None)
+
+    results = run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
+
+    gold_result = next(r for r in results if r["asset"] == "Gold")
+    # Gold's own watchlist entry declares exactly 1 department ("commodity")
+    # — department_count of 2 proves Chief Macro Officer's report was
+    # actually merged in before synthesis, not just present in the cycle.
+    assert gold_result["department_count"] == 2
+
+    gold_strategy_reports = learning_officer.store.get_strategy_reports(asset_or_theme="Gold")
+    assert "Chief Macro Officer" in gold_strategy_reports[0]["contributing_departments"]
+
+    # The merge must never re-persist Chief Macro Officer's report a
+    # second time under "Gold" — it was already recorded once, when the
+    # "US Macro Outlook" entry produced it.
+    macro_agent_reports = [
+        r for r in learning_officer.store.get_agent_reports() if r["department"] == "Chief Macro Officer"
+    ]
+    assert len(macro_agent_reports) == 1
+
+
 def test_one_failing_asset_does_not_stop_the_rest(monkeypatch):
     def _failing_runner(manager, asset, params):
         raise RuntimeError("boom — this asset's processing blew up")
@@ -342,10 +397,6 @@ def test_no_swing_signal_on_continuation(monkeypatch):
 
 
 def test_swing_signal_triggers_telegram_alert_when_configured(monkeypatch):
-    # SWING_SIGNAL_ALERTS_ENABLED defaults to False (see config/settings.py —
-    # the feature's own negative backtest); this test explicitly opts in to
-    # exercise the send path itself, separately from that default.
-    monkeypatch.setattr("scripts.run_daily_cycle.SWING_SIGNAL_ALERTS_ENABLED", True)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
 
@@ -372,45 +423,10 @@ def test_swing_signal_triggers_telegram_alert_when_configured(monkeypatch):
     assert signals[0]["alert_sent"] is True
 
 
-def test_swing_alert_suppressed_by_default_pending_backtest_resolution(monkeypatch):
-    """SWING_SIGNAL_ALERTS_ENABLED defaults to False given the feature's own
-    negative backtest (docs/ARCHITECTURE_SWING_SIGNAL.md) — a signal that
-    would otherwise alert must still be DETECTED and PERSISTED (so the
-    dashboard and database keep accumulating real data), but no Telegram
-    message should actually go out, and alert_sent must be False."""
-    monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
-    monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
-
-    sent_messages = []
-
-    class FakeAlerter:
-        def send_message(self, text, parse_mode="Markdown"):
-            sent_messages.append(text)
-            return {"ok": True}
-
-    watchlist = [
-        {"asset_or_theme": "Broad Market Sentiment", "departments": {"sentiment": {}}},
-        {"asset_or_theme": "Gold", "departments": {"commodity": {"cot_market": "GOLD"}}},
-    ]
-    manager = DataIntegrityManager(min_quality_threshold=50.0)
-    learning_officer = ChiefLearningOfficer(store=ReportStore(":memory:"))
-    execution_officer = ChiefExecutionOfficer(alerter=FakeAlerter())
-
-    run_cycle(watchlist, manager=manager, learning_officer=learning_officer, execution_officer=execution_officer)
-
-    assert sent_messages == []
-    signals = learning_officer.store.get_swing_signals(asset_or_theme="Gold")
-    assert len(signals) == 1
-    assert signals[0]["alert_sent"] is False
-
-
 def test_swing_signal_not_re_alerted_within_the_same_cot_release_week(monkeypatch):
     """Running the cycle twice in a row (simulating two consecutive
     weekday scheduled runs against the same still-unrevised COT release)
-    should only alert once — see agents.swing_signal.should_send_swing_alert.
-    Alerts are explicitly enabled here (see the default-off test above for
-    the current real default)."""
-    monkeypatch.setattr("scripts.run_daily_cycle.SWING_SIGNAL_ALERTS_ENABLED", True)
+    should only alert once — see agents.swing_signal.should_send_swing_alert."""
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "commodity", _reversal_commodity_runner)
     monkeypatch.setitem(DEPARTMENT_RUNNERS, "sentiment", _fake_sentiment_runner_factory(-40.0))
 

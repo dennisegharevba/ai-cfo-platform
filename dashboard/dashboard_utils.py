@@ -212,6 +212,50 @@ def render_agent_report(report) -> None:
     col3.markdown(f"**Risk Level**\n\n{risk_badge(report.risk_level.value)}")
     render_bias_gauge(report.bias_score)
 
+
+# Departments that only ever get run under their own standalone theme name
+# (config/watchlist.py's "US Macro Outlook" / "Broad Market Sentiment"
+# entries) — never under any individual commodity/FX/equity/crypto asset's
+# own name. Matched by DEPARTMENT rather than by hardcoding those theme
+# name strings here: a report's department is what
+# agents/trade_scoring.py's FUNDAMENTAL_DEPARTMENTS and
+# agents/chief_strategy_officer.py actually key off, and staying
+# department-keyed means this doesn't silently drift if a theme's display
+# name ever changes.
+BROAD_CONTEXT_DEPARTMENTS = {"Chief Macro Officer", "Chief Sentiment Officer"}
+
+
+def with_broad_context(all_reports: list, matching: list) -> list:
+    """
+    Update, 2026-09-18: a real, confirmed gap — Chief Macro Officer's
+    16-factor macro read (CPI/GDP/NFP/Fed policy/etc.) and Chief Sentiment
+    Officer's broad market news read were previously only ever synthesized
+    under their own standalone "US Macro Outlook"/"Broad Market Sentiment"
+    theme entries, never merged into any individual asset's own report set
+    — confirmed by a user report that Gold's Trade Decision Engine showed
+    no macro/news reasoning at all, only COT positioning and the narrow
+    3-factor Commodity Fundamentals read. See scripts/run_daily_cycle.py's
+    matching fix for the live scheduled cycle; this is the same fix for
+    dashboard pages that build their own `matching` list from whatever's
+    in st.session_state["last_agent_reports"].
+
+    Returns `matching` with the most recent Chief Macro Officer / Chief
+    Sentiment Officer report from `all_reports` appended, for each of the
+    two that isn't already present by department name (so running this on
+    the "US Macro Outlook" or "Broad Market Sentiment" asset itself is a
+    harmless no-op, not a duplicate). Returns `matching` unchanged if
+    neither has been run yet this session — never fabricates one.
+    """
+    result = list(matching)
+    present = {r.department for r in result}
+    for dept in BROAD_CONTEXT_DEPARTMENTS:
+        if dept in present:
+            continue
+        candidates = [r for r in all_reports if r.department == dept]
+        if candidates:
+            result.append(candidates[-1])  # most recently run, if the user re-ran it more than once
+    return result
+
     if report.factor_breakdown:
         with st.expander(f"Factor breakdown ({len(report.factor_breakdown)} factors)", expanded=True):
             import pandas as pd

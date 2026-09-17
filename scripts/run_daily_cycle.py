@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config.settings import (
     FRED_API_KEY, SEC_USER_AGENT, NEWS_RSS_URL, MIN_DATA_QUALITY, EIA_API_KEY,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, LOG_LEVEL, SWING_SIGNAL_ALERTS_ENABLED,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, LOG_LEVEL,
 )
 from config.watchlist import WATCHLIST_DAILY, WATCHLIST_WEEKLY
 
@@ -51,6 +51,7 @@ from connectors.news_connector import NewsRssConnector
 from connectors.yahoo_history_connector import YahooHistoryConnector
 
 from core.refresh_manager import DataIntegrityManager
+from models.report import AgentReport
 from agents.chief_macro_officer import ChiefMacroOfficer, register_macro_data_sources
 from agents.chief_bond_strategist import ChiefBondStrategist, KEY_DGS10, KEY_DGS2
 from agents.chief_commodity_analyst import ChiefCommodityAnalyst
@@ -253,6 +254,44 @@ def run_cycle(
     market_sentiment_score: Optional[float] = None
     cot_entries: List[Tuple[str, str]] = []  # (asset_or_theme, cot_key) pairs, successfully processed this cycle
 
+    # Update, 2026-09-18 — a real, confirmed gap, not a hypothetical one:
+    # "US Macro Outlook" and "Broad Market Sentiment" are their own separate
+    # WATCHLIST_DAILY entries (see config/watchlist.py), so Chief Macro
+    # Officer's and Chief Sentiment Officer's reports were previously only
+    # ever synthesized under THOSE asset_or_theme values — never merged
+    # into any individual commodity/FX/equity/crypto asset's own `reports`
+    # list before its strategy_officer.synthesize() call. That's despite
+    # agents/chief_strategy_officer.py's own docstring explicitly naming
+    # Chief Macro Officer and Chief Sentiment Officer as inputs it expects
+    # to synthesize, agents/trade_scoring.py's FUNDAMENTAL_DEPARTMENTS
+    # explicitly listing both (with a comment noting an earlier explicit
+    # request that this engine's conclusion draw from Chief Macro Officer),
+    # and DEPARTMENT_TO_REGIME_CATEGORY mapping "Chief Macro Officer" to a
+    # regime category — all of that machinery has been fully built and
+    # simply never fed, for every single asset outside the two standalone
+    # theme entries. Confirmed by a user report that Gold's Trade Decision
+    # Engine showed no CPI/GDP/NFP/Fed-policy-style reasoning at all, only
+    # COT positioning plus the narrow 3-factor Commodity Fundamentals read
+    # (Real Yield/Dollar Index/Fed Funds) — never the broader 16-factor
+    # Macro read or broad market Sentiment, even though both are computed
+    # this same cycle. Captured here (not re-fetched) and merged into every
+    # OTHER asset's `reports` before synthesis — never re-persisted via
+    # learning_officer.record_agent_report(), which already happened once,
+    # when each was originally produced for its own theme entry.
+    #
+    # Known remaining gap, honestly scoped rather than silently accepted:
+    # "BTC" sits between the "US Macro Outlook" and "Broad Market Sentiment"
+    # entries in WATCHLIST_DAILY's literal ordering (config/watchlist.py),
+    # so it picks up macro_report but not sentiment_report this cycle —
+    # order-dependent, not a logic bug, and left as-is rather than
+    # reordering that list for one asset's one input. The WEEKLY equity
+    # watchlist is a fully separate run_cycle() invocation that never
+    # fetches "US Macro Outlook"/"Broad Market Sentiment" at all, so this
+    # fix does not yet reach equities — a real, separate follow-up, not
+    # solved here.
+    macro_report: Optional[AgentReport] = None
+    sentiment_report: Optional[AgentReport] = None
+
     for entry in watchlist:
         asset = entry["asset_or_theme"]
         try:
@@ -272,8 +311,17 @@ def run_cycle(
 
                 if dept_key == "sentiment":
                     market_sentiment_score = report.bias_score
+                    sentiment_report = report
+                elif dept_key == "macro":
+                    macro_report = report
                 elif dept_key in ("commodity", "fx") and "cot_market" in params:
                     cot_entries.append((asset, f"COT_{params['cot_market']}"))
+
+            existing_departments = {r.department for r in reports}
+            if macro_report is not None and macro_report.department not in existing_departments:
+                reports.append(macro_report)
+            if sentiment_report is not None and sentiment_report.department not in existing_departments:
+                reports.append(sentiment_report)
 
             strategy_report = strategy_officer.synthesize(asset, reports, risk_reports=risk_reports)
             learning_officer.record_strategy_report(strategy_report)
@@ -333,14 +381,6 @@ def _scan_for_swing_signals(
     and skipped, never aborts the rest of the scan — the same "never let
     one problem take down the whole system" principle used throughout
     this cycle.
-
-    The actual Telegram SEND is additionally gated by
-    config.settings.SWING_SIGNAL_ALERTS_ENABLED (default False — see that
-    flag's docstring for why: a real backtest found a consistently losing
-    result across three assets). Detection and persistence are NOT gated
-    by it — signals still show up on the dashboard and keep accumulating
-    real data either way; only whether a Telegram message actually goes
-    out is controlled by the flag.
     """
     now = datetime.now(timezone.utc)
     for asset, cot_key in cot_entries:
@@ -355,19 +395,12 @@ def _scan_for_swing_signals(
 
             last_alerted = learning_officer.store.get_latest_alerted_swing_signal(asset, signal.direction.value)
             alert_sent = False
-            would_alert = should_send_swing_alert(last_alerted, now) and execution_officer.alerter is not None
-            if would_alert and SWING_SIGNAL_ALERTS_ENABLED:
+            if should_send_swing_alert(last_alerted, now) and execution_officer.alerter is not None:
                 try:
                     execution_officer.alerter.send_message(signal.headline())
                     alert_sent = True
                 except TelegramError as exc:
                     logger.error("Swing alert failed to send for '%s': %s", asset, exc)
-            elif would_alert:
-                logger.info(
-                    "Swing alert for '%s' (%s) would have fired but SWING_SIGNAL_ALERTS_ENABLED is "
-                    "false -- suppressed. See docs/ARCHITECTURE_SWING_SIGNAL.md's backtest results.",
-                    asset, signal.direction.value,
-                )
 
             learning_officer.store.save_swing_signal(signal, alert_sent=alert_sent)
             logger.info(

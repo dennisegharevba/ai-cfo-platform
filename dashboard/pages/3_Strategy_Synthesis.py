@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import streamlit as st
 
-from dashboard.dashboard_utils import risk_badge, bias_badge, inject_terminal_css, render_bias_gauge
+from dashboard.dashboard_utils import risk_badge, bias_badge, inject_terminal_css, render_bias_gauge, with_broad_context
 from agents.chief_strategy_officer import ChiefStrategyOfficer
 from agents.institutional_relationship import (
     ExecutionReadiness, EXECUTION_READINESS_BADGES, EXECUTION_READINESS_LABELS,
@@ -40,13 +40,14 @@ if not reports:
 else:
     asset_names = sorted(set(r.asset_or_theme for r in reports))
     asset = st.selectbox("Synthesize reports for", asset_names)
-    matching = [r for r in reports if r.asset_or_theme == asset]
+    matching = with_broad_context(reports, [r for r in reports if r.asset_or_theme == asset])
     directional_matching = [r for r in matching if r.department not in RISK_TYPE_DEPARTMENTS]
     risk_matching = [r for r in matching if r.department in RISK_TYPE_DEPARTMENTS]
 
     st.caption(
         f"{len(directional_matching)} directional report(s) + {len(risk_matching)} risk report(s) "
-        f"will be synthesized for **{asset}**."
+        f"will be synthesized for **{asset}** — including the platform's broad Macro/Sentiment reads "
+        f"when they've been run this session, not just {asset}-specific departments."
     )
     for r in matching:
         role = " (risk — confirms/warns, never shifts direction)" if r.department in RISK_TYPE_DEPARTMENTS else ""
